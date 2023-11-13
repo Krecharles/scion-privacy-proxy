@@ -1665,6 +1665,12 @@ def go_deps():
         version = "v1.9.0",
     )
     go_repository(
+        name = "com_github_sssaas_sssa_golang",
+        importpath = "github.com/SSSaaS/sssa-golang",
+        sum = "h1:NMpC6M+PtNNDYpq7ozB7kINpv10L5yeli5GJpka2PX8=",
+        version = "v0.0.0-20170502204618-d37d7782d752",
+    )
+    go_repository(
         name = "com_github_stretchr_objx",
         importpath = "github.com/stretchr/objx",
         sum = "h1:Hbg2NidpLE8veEBkEZTL3CvlkUIVzuU9jDplZO54c48=",

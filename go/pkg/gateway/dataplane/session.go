@@ -23,9 +23,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/SSSaaS/sssa-golang"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 
+	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/metrics"
 	"github.com/scionproto/scion/go/lib/snet"
 )
@@ -63,6 +65,29 @@ type Session struct {
 	mutex sync.Mutex
 	// senders is a list of currently used senders.
 	senders []*sender
+	// multipath encoder
+	encoder *encoder
+	// seq is the next frame sequence number to use.
+	seq uint64
+}
+
+func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
+	dataPlaneConn net.PacketConn, pathStatsPublisher PathStatsPublisher,
+	metrics SessionMetrics) *Session {
+	sess := &Session{
+		SessionID:          sessionId,
+		GatewayAddr:        gatewayAddr,
+		DataPlaneConn:      dataPlaneConn,
+		PathStatsPublisher: pathStatsPublisher,
+		Metrics:            metrics,
+		encoder:            newEncoder(sessionId, NewStreamID(), 600),
+		seq:                0,
+	}
+	go func() {
+		defer log.HandlePanic()
+		sess.run()
+	}()
+	return sess
 }
 
 // Close signals that the session should close up its internal Connections. Close returns as
@@ -71,6 +96,7 @@ func (s *Session) Close() {
 	for _, snd := range s.senders {
 		snd.Close()
 	}
+	s.encoder.Close()
 }
 
 // Write encodes the packet and sends it to the network.
@@ -82,14 +108,7 @@ func (s *Session) Write(packet gopacket.Packet) {
 	if len(s.senders) == 0 {
 		return
 	}
-	if len(s.senders) == 1 {
-		s.senders[0].Write(packet.Data())
-		return
-	}
-	// Choose the path based on the packet's quintuple.
-	hash := crc64.Checksum(extractQuintuple(packet), crcTable)
-	index := hash % uint64(len(s.senders))
-	s.senders[index].Write(packet.Data())
+	s.encoder.Write(packet.Data())
 }
 
 func (s *Session) String() string {
@@ -115,7 +134,9 @@ func (s *Session) String() string {
 // reordering issues.
 func (s *Session) SetPaths(paths []snet.Path) error {
 	s.mutex.Lock()
+	s.encoder.Lock()
 	defer s.mutex.Unlock()
+	defer s.encoder.Unlock()
 
 	created := make([]*sender, 0, len(paths))
 	reused := make(map[*sender]bool, len(s.senders))
@@ -166,6 +187,54 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 	})
 	s.senders = newSenders
 	return nil
+}
+
+func (s *Session) run() {
+	for {
+
+		// There is a race condition issue.
+		// If the paths changes after encoder.Read() returns and before the mutex is locked,
+		// the value of currentMtuSum will be different to len(frame)
+
+		frame := s.encoder.Read()
+
+		if frame == nil {
+			// Sender was closed and all the buffered frames were sent.
+			break
+		}
+
+		// Split and interleave the packets, then send through selected paths.
+		s.splitAndSend(frame)
+		s.seq++
+	}
+}
+
+// Split frame with each path's MTU .
+func (s *Session) splitAndSend(frame []byte) {
+
+	N := len(s.senders)
+	T := N - 1
+
+	fmt.Println("splitAndSend, N:", N, "frame: ", frame[hdrLen:], len(frame))
+	shares, err := sssa.Create(T, N, string(frame[hdrLen:]))
+
+	if err != nil {
+		log.HandlePanic()
+	}
+
+	// Send the same data over every path for now
+	for pathID, sender := range s.senders {
+		// copy frame and change sequence according to the pathID
+
+		newFrame := make([]byte, hdrLen+len(shares[pathID]))
+		copy(newFrame, frame)
+		// update the sequence number to accomodate for the last byte being the pathID
+		binary.BigEndian.PutUint64(newFrame[seqPos:seqPos+8], (s.seq<<8)+uint64(pathID))
+		// copy the shares into the newframe
+		copy(newFrame[hdrLen:], []byte(shares[pathID]))
+		sender.Write(newFrame)
+	}
+
 }
 
 func findSenderWithPath(senders []*sender, path snet.Path) (*sender, bool) {

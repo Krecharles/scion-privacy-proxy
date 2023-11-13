@@ -8,6 +8,7 @@ go_library(
         "doc.go",
         "encoder.go",
         "framebuf.go",
+        "framebufgroup.go",
         "ingressserver.go",
         "ipforwarder.go",
         "pktring.go",
@@ -34,6 +35,7 @@ go_library(
         "//go/pkg/gateway/control:go_default_library",
         "@com_github_google_gopacket//:go_default_library",
         "@com_github_google_gopacket//layers:go_default_library",
+        "@com_github_sssaas_sssa_golang//:go_default_library",
     ],
 )
 
@@ -48,6 +50,7 @@ go_test(
         "pktring_test.go",
         "routingtable_test.go",
         "sender_test.go",
+        "privacyproxy_test.go",
         "session_test.go",
         "worker_test.go",
     ],

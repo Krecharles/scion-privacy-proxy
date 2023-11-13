@@ -16,6 +16,7 @@ package dataplane
 
 import (
 	"encoding/binary"
+	"sync"
 	"time"
 )
 
@@ -51,7 +52,7 @@ const (
 type encoder struct {
 	// sessionID of the session this encoder belongs to.
 	sessionID uint8
-	// streamID is identifies a flow within the session. Only the frames from
+	// streamID identifies a flow within the session. Only the frames from
 	// the same streams are, on the remote side, put into the same reassembly queue.
 	streamID uint32
 	// ring is used to pass packets from the writer goroutine to the sending goroutine.
@@ -63,18 +64,24 @@ type encoder struct {
 	// frame is the frame being built at the moment.
 	// To avoid allocations, we reuse the same frame buffer over and over again.
 	frame []byte
+	// Mutex for the frame buffer, preventing buffer from resizing when there is some packets within.
+	// The mutex is locked all the time, and it's only unlocked when e.Read() is blocked, and is
+	// locked again after e.Read() returns.
+	frameMtx sync.Mutex
 }
 
 // newEncoder creates a new encoder instance.
 // mtu is max size of the frame, excluding SCION header, but including SIG header.
 func newEncoder(sessionID uint8, streamID uint32, mtu uint16) *encoder {
-	return &encoder{
+	e := &encoder{
 		sessionID: sessionID,
 		streamID:  streamID,
 		seq:       0,
 		ring:      newPktRing(),
 		frame:     make([]byte, 0, mtu),
 	}
+	e.Lock()
+	return e
 }
 
 // Close initiates the close procedure. Frames can still be read.
@@ -117,13 +124,25 @@ func (e *encoder) Read() []byte {
 		if cap(e.frame)-pos < 40 {
 			return e.frame[:pos]
 		}
+
 		// If there's nothing but the header in the current frame we are going to fetch more
 		// data in blocking manner. If there's already some data in the frame we will
 		// still try to stuff it with more packets, but if there are no packets available,
 		// we'll send what we have immediately.
+		// The Read() function will only be blocked when there is nothing but the header.
+		// So it's safe to unlock, and let the frame buffer being resized during the time window.
 		block := (pos == hdrLen)
+		if block {
+			e.Unlock()
+		}
 		var n int
 		e.pkt, n = e.ring.Read(block)
+
+		// Obtain the lock to prevent frame buffer from being resized during the frame generation.
+		if block {
+			e.Lock()
+		}
+
 		if n == 0 {
 			// No more packets to stuff into the frame. Go on with sending.
 			return e.frame[:pos]
@@ -191,6 +210,14 @@ func (e *encoder) copyToFrame() int {
 	copy(e.frame[pos:pos+toCopy], e.pkt[:toCopy])
 	e.pkt = e.pkt[toCopy:]
 	return toCopy
+}
+
+func (e *encoder) Lock() {
+	e.frameMtx.Lock()
+}
+
+func (e *encoder) Unlock() {
+	e.frameMtx.Unlock()
 }
 
 // NewStreamID generates a new random stream ID.

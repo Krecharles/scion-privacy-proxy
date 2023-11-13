@@ -50,18 +50,21 @@ type worker struct {
 	rlists           map[int]*reassemblyList
 	markedForCleanup bool
 	tunIO            io.WriteCloser
+	// number of paths required to decrypt, not total number of paths
+	numPaths uint8
 }
 
 func newWorker(remote *snet.UDPAddr, sessID uint8,
-	tunIO io.WriteCloser, metrics IngressMetrics) *worker {
+	tunIO io.WriteCloser, metrics IngressMetrics, numPaths uint8) *worker {
 
 	worker := &worker{
-		Remote:  remote,
-		SessID:  sessID,
-		Ring:    ringbuf.New(64, nil, fmt.Sprintf("ingress_%s_%d", remote.IA, sessID)),
-		rlists:  make(map[int]*reassemblyList),
-		tunIO:   tunIO,
-		Metrics: metrics,
+		Remote:   remote,
+		SessID:   sessID,
+		Ring:     ringbuf.New(64, nil, fmt.Sprintf("ingress_%s_%d", remote.IA, sessID)),
+		rlists:   make(map[int]*reassemblyList),
+		tunIO:    tunIO,
+		Metrics:  metrics,
+		numPaths: numPaths,
 	}
 
 	return worker
@@ -115,13 +118,14 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 	frame.completePktsProcessed = index == 0xffff
 	// Add to frame buf reassembly list.
 	rlist := w.getRlist(epoch)
+	// Insert into rlist and write completely contained packets to wire.
 	rlist.Insert(ctx, frame)
 }
 
 func (w *worker) getRlist(epoch int) *reassemblyList {
 	rlist, ok := w.rlists[epoch]
 	if !ok {
-		rlist = newReassemblyList(epoch, reassemblyListCap, w, w.Metrics.FramesDiscarded)
+		rlist = newReassemblyList(epoch, reassemblyListCap, w, w.numPaths, w.Metrics.FramesDiscarded)
 		w.rlists[epoch] = rlist
 	}
 	rlist.markedForDeletion = false

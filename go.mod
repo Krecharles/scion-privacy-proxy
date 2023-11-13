@@ -1,6 +1,7 @@
 module github.com/scionproto/scion
 
 require (
+	github.com/SSSaaS/sssa-golang v0.0.0-20170502204618-d37d7782d752
 	github.com/BurntSushi/toml v0.3.1
 	github.com/antlr/antlr4 v0.0.0-20181218183524-be58ebffde8e
 	github.com/bazelbuild/rules_go v0.29.0

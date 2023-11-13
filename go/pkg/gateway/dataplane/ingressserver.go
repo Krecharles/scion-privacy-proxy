@@ -147,7 +147,8 @@ func (d *IngressServer) dispatch(ctx context.Context, frame *frameBuf, src *snet
 		}
 		// Handle will be cleaned up when worker goroutine finishes.
 
-		worker = newWorker(src, frame.sessId, handle, metrics)
+		// TODO decide more smartly how to handle numpaths
+		worker = newWorker(src, frame.sessId, handle, metrics, 2)
 		d.workers[dispatchStr] = worker
 		go func() {
 			defer log.HandlePanic()
