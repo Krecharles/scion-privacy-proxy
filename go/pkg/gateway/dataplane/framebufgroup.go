@@ -85,7 +85,7 @@ func (fbg *frameBufGroup) TryAndCombine() bool {
 
 	// build frame
 	fbg.combined.index = firstFrame.index
-	fbg.combined.seqNr = firstFrame.seqNr
+	fbg.combined.seqNr = firstFrame.seqNr >> 8
 	fbg.combined.snd = firstFrame.snd
 	copy(fbg.combined.raw[:hdrLen], firstFrame.raw[:hdrLen])
 	copy(fbg.combined.raw[hdrLen:], []byte(output))

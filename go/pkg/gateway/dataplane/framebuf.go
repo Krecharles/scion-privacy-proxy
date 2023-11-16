@@ -109,47 +109,36 @@ func (fb *frameBuf) Release() {
 // ProcessCompletePkts write all complete packets in the frame to the wire and
 // sets the correct metadata in case there is a fragment at the end of the frame.
 func (fb *frameBuf) ProcessCompletePkts(ctx context.Context) {
-	fmt.Println("ProcessCompletePkts, ", fb.seqNr)
 	logger := log.FromCtx(ctx)
 	if fb.completePktsProcessed || fb.index == 0xffff {
-		fmt.Println("--ProcessCompletePkts ------ 1")
 		fb.completePktsProcessed = true
 		return
 	}
-	fmt.Println("--ProcessCompletePkts ------ 2")
 	offset := fb.index + sigHdrSize
 	var pktLen int
 	for offset < fb.frameLen {
-		fmt.Println("Processing packet", "offset", offset, "frameLen", fb.frameLen)
 		// Make sure that the frame contains the entire IPv4 or IPv6 header.
 		// Get the payload length.
-
-		fmt.Println("packet", fb.raw)
-
 		ipVersion := fb.raw[offset] >> 4
 		switch ipVersion {
 		case 4:
 			if fb.frameLen-offset < 20 {
 				fb.completePktsProcessed = true
-				fmt.Println("----- ProcessCompletePkts ------ 3.0")
 				return
 			}
 			pktLen = int(binary.BigEndian.Uint16(fb.raw[offset+2 : offset+4]))
 			if pktLen < 20 {
 				fb.completePktsProcessed = true
-				fmt.Println("----- ProcessCompletePkts ------ 3.1")
 				return
 			}
 		case 6:
 			if fb.frameLen-offset < 40 {
 				fb.completePktsProcessed = true
-				fmt.Println("----- ProcessCompletePkts ------ 3.2")
 				return
 			}
 			pktLen = int(binary.BigEndian.Uint16(fb.raw[offset+4 : offset+6]))
 			pktLen += 40
 		default:
-			fmt.Println("----[ERROR]: Could not decipher IP version in ProcessCompletePkts")
 			fb.completePktsProcessed = true
 			return
 		}
@@ -166,12 +155,9 @@ func (fb *frameBuf) ProcessCompletePkts(ctx context.Context) {
 	}
 	if offset < fb.frameLen {
 		// There is an incomplete packet at the end of the frame.
-		fmt.Println("--ProcessCompletePkts ------ 4")
-		fmt.Println("----[Debug]: There is an incomplete Packet at the end of the frame", fb.frameLen, offset)
 		fb.frag0Start = offset
 		fb.pktLen = pktLen
 	}
-	fmt.Println("--ProcessCompletePkts ------ 5")
 	fb.completePktsProcessed = true
 	fb.frag0Processed = fb.frag0Start == 0
 }

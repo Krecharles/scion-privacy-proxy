@@ -43,28 +43,28 @@ type ingressSender interface {
 
 // worker handles decapsulation of SIG frames.
 type worker struct {
-	Remote           *snet.UDPAddr
-	SessID           uint8
-	Ring             *ringbuf.Ring
-	Metrics          IngressMetrics
-	rlists           map[int]*reassemblyList
-	markedForCleanup bool
-	tunIO            io.WriteCloser
-	// number of paths required to decrypt, not total number of paths
-	numPaths uint8
+	Remote                  *snet.UDPAddr
+	SessID                  uint8
+	Ring                    *ringbuf.Ring
+	Metrics                 IngressMetrics
+	rlists                  map[int]*reassemblyList
+	markedForCleanup        bool
+	tunIO                   io.WriteCloser
+	requiredSharesForDecode int
+	decoder                 decoder
 }
 
-func newWorker(remote *snet.UDPAddr, sessID uint8,
-	tunIO io.WriteCloser, metrics IngressMetrics, numPaths uint8) *worker {
+func newWorker(remote *snet.UDPAddr, sessID uint8, requiredSharesForDecode int,
+	tunIO io.WriteCloser, metrics IngressMetrics) *worker {
 
 	worker := &worker{
-		Remote:   remote,
-		SessID:   sessID,
-		Ring:     ringbuf.New(64, nil, fmt.Sprintf("ingress_%s_%d", remote.IA, sessID)),
-		rlists:   make(map[int]*reassemblyList),
-		tunIO:    tunIO,
-		Metrics:  metrics,
-		numPaths: numPaths,
+		Remote:  remote,
+		SessID:  sessID,
+		Ring:    ringbuf.New(64, nil, fmt.Sprintf("ingress_%s_%d", remote.IA, sessID)),
+		rlists:  make(map[int]*reassemblyList),
+		tunIO:   tunIO,
+		Metrics: metrics,
+		decoder: *newDecoder(requiredSharesForDecode),
 	}
 
 	return worker
@@ -116,17 +116,23 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 	// If index == 0xffff then we can be sure that there are no complete packets in this
 	// frame.
 	frame.completePktsProcessed = index == 0xffff
+
+	// Add frame to a decoder structure
+	decodedFrame := w.decoder.Insert(frame)
+	// Check if decoder was successful
+	if decodedFrame == nil {
+		return
+	}
+
 	// Add to frame buf reassembly list.
 	rlist := w.getRlist(epoch)
-	// Insert into rlist and write completely contained packets to wire.
-	fmt.Println("Insert frame ------, ", frame.seqNr)
-	rlist.Insert(ctx, frame)
+	rlist.Insert(ctx, decodedFrame)
 }
 
 func (w *worker) getRlist(epoch int) *reassemblyList {
 	rlist, ok := w.rlists[epoch]
 	if !ok {
-		rlist = newReassemblyList(epoch, reassemblyListCap, w, w.numPaths, w.Metrics.FramesDiscarded)
+		rlist = newReassemblyList(epoch, reassemblyListCap, w, w.Metrics.FramesDiscarded)
 		w.rlists[epoch] = rlist
 	}
 	rlist.markedForDeletion = false
@@ -134,7 +140,6 @@ func (w *worker) getRlist(epoch int) *reassemblyList {
 }
 
 func (w *worker) cleanup() {
-	fmt.Println("----[DEBUG]: worker.cleanup()")
 	for epoch := range w.rlists {
 		rlist := w.rlists[epoch]
 		if rlist.markedForDeletion {
@@ -154,9 +159,8 @@ func (w *worker) cleanup() {
 	}
 }
 
-// Sends the packet to the wire. This function is called in framebuf and in rlist
 func (w *worker) send(packet []byte) error {
-
+	fmt.Println("----[Debug]: worker.go->send")
 	bytesWritten, err := w.tunIO.Write(packet)
 	if err != nil {
 		increaseCounterMetric(w.Metrics.SendLocalError, 1)

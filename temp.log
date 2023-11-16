@@ -1,74 +1,309 @@
 ==================== Test output for //go/pkg/gateway/dataplane:go_default_test:
 [Running Test]: worker_test.go->TestParsing
---- FAIL: TestParsing (0.02s)
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:91
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:109
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:131
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:137
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:160
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:187
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:193
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:217
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:223
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:253
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:283
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:289
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-    worker_test.go:48: 
-        	Error Trace:	worker_test.go:48
-        	            				worker_test.go:318
-        	Error:      	Should not be: 0
-        	Test:       	TestParsing
-FAIL
+----[Debug]: Inserting new frame seq= 0
+----[Debug]: Inserted frame with seq 0
+Created a new FBG for  0 0
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 0
+----[Debug]: Inserting new frame seq= 1
+----[Debug]: Inserted frame with seq 1
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 44 index 0 seqNr 0
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 64 0 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17 18 19 20 21 22 23 24]
+----[Debug]: Writing packet to wire via framebuf.  len 28 offset 16 frameLen 44
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 2
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 0
+----[Debug]: Inserting new frame seq= 256
+----[Debug]: Inserted frame with seq 256
+Created a new FBG for  1 256
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 1
+----[Debug]: Inserting new frame seq= 257
+----[Debug]: Inserted frame with seq 257
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 59 index 0 seqNr 1
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 1 0 96 0 0 0 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 101 102 103]
+----[Debug]: Writing packet to wire via framebuf.  len 43 offset 16 frameLen 59
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 258
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 1
+----[Debug]: Inserting new frame seq= 512
+----[Debug]: Inserted frame with seq 512
+Created a new FBG for  2 512
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 2
+----[Debug]: Inserting new frame seq= 513
+----[Debug]: Inserted frame with seq 513
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 62 index 0 seqNr 2
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 2 0 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 101 102 103 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 201 202 203]
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 16 frameLen 62
+----[Debug]: worker.go->send
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 39 frameLen 62
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 514
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 2
+----[Debug]: Inserting new frame seq= 768
+----[Debug]: Inserted frame with seq 768
+Created a new FBG for  3 768
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 3
+----[Debug]: Inserting new frame seq= 769
+----[Debug]: Inserted frame with seq 769
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 42 index 0 seqNr 3
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 3 0 64 0 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 51 52 53 54 55 56]
+----[Debug]: Inserting new frame seq= 770
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 3
+----[Debug]: Inserting new frame seq= 1024
+----[Debug]: Inserted frame with seq 1024
+Created a new FBG for  4 1024
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 4
+----[Debug]: Inserting new frame seq= 1025
+----[Debug]: Inserted frame with seq 1025
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 18 index 0 seqNr 4
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 4 0 57 58]
+reassemblyList.Insert() ---------- 1
+reassemblyList.Insert() ---------- 2
+reassemblyList.Insert() ---------- 3
+tryReassemble()
+tryReassemble() ----- 1
+tryReassemble() ----- 3
+collectAndWrite() ----- 1
+collectAndWrite() ----- 2
+collectAndWrite() ----- 3
+collectAndWrite() ----- 4
+----[Debug]:  Writing packet to wire via rlist
+[64 0 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 51 52 53 54 55 56 57 58]
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 1026
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 4
+----[Debug]: Inserting new frame seq= 1280
+----[Debug]: Inserted frame with seq 1280
+Created a new FBG for  5 1280
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 5
+----[Debug]: Inserting new frame seq= 1281
+----[Debug]: Inserted frame with seq 1281
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 42 index 0 seqNr 5
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 5 0 64 0 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 11 12 13 14 15 16]
+----[Debug]: Inserting new frame seq= 1282
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 5
+----[Debug]: Inserting new frame seq= 1536
+----[Debug]: Inserted frame with seq 1536
+Created a new FBG for  6 1536
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 6
+----[Debug]: Inserting new frame seq= 1537
+----[Debug]: Inserted frame with seq 1537
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 41 index 2 seqNr 6
+combined packet:  [0 1 0 2 0 0 0 1 0 0 0 0 0 0 6 0 17 18 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 21 22 23]
+reassemblyList.Insert() ---------- 1
+reassemblyList.Insert() ---------- 2
+reassemblyList.Insert() ---------- 3
+tryReassemble()
+tryReassemble() ----- 1
+tryReassemble() ----- 3
+collectAndWrite() ----- 1
+collectAndWrite() ----- 2
+collectAndWrite() ----- 3
+collectAndWrite() ----- 4
+----[Debug]:  Writing packet to wire via rlist
+[64 0 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 11 12 13 14 15 16 17 18]
+----[Debug]: worker.go->send
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 18 frameLen 41
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 1538
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 6
+----[Debug]: Inserting new frame seq= 1792
+----[Debug]: Inserted frame with seq 1792
+Created a new FBG for  7 1792
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 7
+----[Debug]: Inserting new frame seq= 1793
+----[Debug]: Inserted frame with seq 1793
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 39 index 0 seqNr 7
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 7 0 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 101 102 103]
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 16 frameLen 39
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 1794
+----[Debug]: Frame too late, fbg already combined. groupSeqNr= 7
+----[Debug]: Inserting new frame seq= 2304
+----[Debug]: Inserted frame with seq 2304
+Created a new FBG for  9 2304
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 9
+----[Debug]: Inserting new frame seq= 2305
+----[Debug]: Inserted frame with seq 2305
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 39 index 0 seqNr 9
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 9 0 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 201 202 203]
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 16 frameLen 39
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 2306
+----[Debug]: Inserted frame with seq 2306
+Created a new FBG for  9 2306
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 9
+----[Debug]: Inserting new frame seq= 2560
+----[Debug]: Inserted frame with seq 2560
+Created a new FBG for  10 2560
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 10
+----[Debug]: Inserting new frame seq= 2561
+----[Debug]: Inserted frame with seq 2561
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 42 index 0 seqNr 10
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 10 0 64 0 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 51 52 53 54 55 56]
+----[Debug]: Inserting new frame seq= 2562
+----[Debug]: Inserted frame with seq 2562
+Created a new FBG for  10 2562
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 10
+----[Debug]: Inserting new frame seq= 3072
+----[Debug]: Inserted frame with seq 3072
+Created a new FBG for  12 3072
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 12
+----[Debug]: Inserting new frame seq= 3073
+----[Debug]: Inserted frame with seq 3073
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 47 index 8 seqNr 12
+combined packet:  [0 1 0 8 0 0 0 1 0 0 0 0 0 0 12 0 70 71 72 73 74 75 76 77 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 201 202 203]
+reassemblyList.Insert() ---------- 1
+reassemblyList.Insert() ---------- 2
+reassemblyList.Insert() ---------- 2.0,  12 10
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 24 frameLen 47
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 3074
+----[Debug]: Inserted frame with seq 3074
+Created a new FBG for  12 3074
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 12
+----[Debug]: Inserting new frame seq= 3328
+----[Debug]: Inserted frame with seq 3328
+Created a new FBG for  13 3328
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 13
+----[Debug]: Inserting new frame seq= 3329
+----[Debug]: Inserted frame with seq 3329
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 60 index 0 seqNr 13
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 13 0 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 81 82 83 80 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 16 18 19 20]
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 16 frameLen 60
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 3330
+----[Debug]: Inserted frame with seq 3330
+Created a new FBG for  13 3330
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 13
+----[Debug]: Inserting new frame seq= 3584
+----[Debug]: Inserted frame with seq 3584
+Created a new FBG for  14 3584
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 14
+----[Debug]: Inserting new frame seq= 3585
+----[Debug]: Inserted frame with seq 3585
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 47 index 8 seqNr 14
+combined packet:  [0 1 0 8 0 0 0 1 0 0 0 0 0 0 14 0 21 22 23 24 25 26 27 28 64 0 0 23 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 91 92 93]
+----[Debug]: Writing packet to wire via framebuf.  len 23 offset 24 frameLen 47
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 3586
+----[Debug]: Inserted frame with seq 3586
+Created a new FBG for  14 3586
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 14
+----[Debug]: Inserting new frame seq= 3840
+----[Debug]: Inserted frame with seq 3840
+Created a new FBG for  15 3840
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 15
+----[Debug]: Inserting new frame seq= 3841
+----[Debug]: Inserted frame with seq 3841
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 42 index 0 seqNr 15
+combined packet:  [0 1 0 0 0 0 0 1 0 0 0 0 0 0 15 0 64 0 0 30 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 51 52 53 54 55 56]
+----[Debug]: Inserting new frame seq= 3842
+----[Debug]: Inserted frame with seq 3842
+Created a new FBG for  15 3842
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 15
+----[Debug]: Inserting new frame seq= 4096
+----[Debug]: Inserted frame with seq 4096
+Created a new FBG for  16 4096
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 16
+----[Debug]: Inserting new frame seq= 4097
+----[Debug]: Inserted frame with seq 4097
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 18 index 65535 seqNr 16
+combined packet:  [0 1 255 255 0 0 0 1 0 0 0 0 0 0 16 0 57 58]
+reassemblyList.Insert() ---------- 1
+reassemblyList.Insert() ---------- 2
+reassemblyList.Insert() ---------- 3
+tryReassemble()
+tryReassemble() ----- 1
+tryReassemble() ----- 3
+----[Debug]: Inserting new frame seq= 4098
+----[Debug]: Inserted frame with seq 4098
+Created a new FBG for  16 4098
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 16
+----[Debug]: Inserting new frame seq= 4352
+----[Debug]: Inserted frame with seq 4352
+Created a new FBG for  17 4352
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 17
+----[Debug]: Inserting new frame seq= 4353
+----[Debug]: Inserted frame with seq 4353
+Trying to reassemble
+Attempting combination using  2
+framebufgroup.TryAndCombine() was successful.  frameLen 18 index 65535 seqNr 17
+combined packet:  [0 1 255 255 0 0 0 1 0 0 0 0 0 0 17 0 59 60]
+reassemblyList.Insert() ---------- 1
+reassemblyList.Insert() ---------- 2
+reassemblyList.Insert() ---------- 3
+tryReassemble()
+tryReassemble() ----- 1
+tryReassemble() ----- 3
+collectAndWrite() ----- 1
+collectAndWrite() ----- 2
+collectAndWrite() ----- 2
+collectAndWrite() ----- 3
+collectAndWrite() ----- 4
+----[Debug]:  Writing packet to wire via rlist
+[64 0 0 30 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 51 52 53 54 55 56 57 58 59 60]
+----[Debug]: worker.go->send
+----[Debug]: Inserting new frame seq= 4354
+----[Debug]: Inserted frame with seq 4354
+Created a new FBG for  17 4354
+Trying to reassemble
+Not enough shares frameCnt 1 numPaths 2 seq 17
+PASS
 ================================================================================
-//go/pkg/gateway/dataplane:go_default_test                               FAILED in 0.1s
-  bazel-testlogs/go/pkg/gateway/dataplane/go_default_test/test.log
+//go/pkg/gateway/dataplane:go_default_test                               PASSED in 0.1s
 
-Executed 1 out of 1 test: 1 fails locally.
+Executed 1 out of 1 test: 1 test passes.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

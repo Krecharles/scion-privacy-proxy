@@ -40,7 +40,7 @@ func TestThreePathsEncryptionWithRandomData(t *testing.T) {
 	}
 
 	mt := &MockTun{}
-	w := newWorker(addr, 1, mt, IngressMetrics{}, 2)
+	w := newWorker(addr, 1, 2, mt, IngressMetrics{})
 
 	// create a list of randomly generated gopackets and send them
 	packets := make([]gopacket.Packet, numPackets)
