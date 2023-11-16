@@ -1,0 +1,74 @@
+==================== Test output for //go/pkg/gateway/dataplane:go_default_test:
+[Running Test]: worker_test.go->TestParsing
+--- FAIL: TestParsing (0.02s)
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:91
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:109
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:131
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:137
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:160
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:187
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:193
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:217
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:223
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:253
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:283
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:289
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+    worker_test.go:48: 
+        	Error Trace:	worker_test.go:48
+        	            				worker_test.go:318
+        	Error:      	Should not be: 0
+        	Test:       	TestParsing
+FAIL
+================================================================================
+//go/pkg/gateway/dataplane:go_default_test                               FAILED in 0.1s
+  bazel-testlogs/go/pkg/gateway/dataplane/go_default_test/test.log
+
+Executed 1 out of 1 test: 1 fails locally.

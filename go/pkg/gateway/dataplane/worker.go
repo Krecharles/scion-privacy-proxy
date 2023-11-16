@@ -119,6 +119,7 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 	// Add to frame buf reassembly list.
 	rlist := w.getRlist(epoch)
 	// Insert into rlist and write completely contained packets to wire.
+	fmt.Println("Insert frame ------, ", frame.seqNr)
 	rlist.Insert(ctx, frame)
 }
 
@@ -133,6 +134,7 @@ func (w *worker) getRlist(epoch int) *reassemblyList {
 }
 
 func (w *worker) cleanup() {
+	fmt.Println("----[DEBUG]: worker.cleanup()")
 	for epoch := range w.rlists {
 		rlist := w.rlists[epoch]
 		if rlist.markedForDeletion {
@@ -152,7 +154,9 @@ func (w *worker) cleanup() {
 	}
 }
 
+// Sends the packet to the wire. This function is called in framebuf and in rlist
 func (w *worker) send(packet []byte) error {
+
 	bytesWritten, err := w.tunIO.Write(packet)
 	if err != nil {
 		increaseCounterMetric(w.Metrics.SendLocalError, 1)

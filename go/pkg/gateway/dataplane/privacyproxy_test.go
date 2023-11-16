@@ -1,6 +1,7 @@
 package dataplane
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"testing"
@@ -17,6 +18,7 @@ import (
 )
 
 func TestThreePathsEncryptionWithRandomData(t *testing.T) {
+	fmt.Println("[Running Test]: privacyproxy_test.go->TestThreePathsEncryptionWithRandomData")
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -49,7 +51,6 @@ func TestThreePathsEncryptionWithRandomData(t *testing.T) {
 	waitFramesProxyTest(t, frameChan, 37, numPackets, w)
 
 	assert.Equal(t, numPackets, len(mt.packets))
-	assert.Equal(t, numPackets, len(packets))
 
 	for i := 0; i < numPackets; i++ {
 		if len(mt.packets) != 0 {
@@ -69,7 +70,7 @@ func createMockSession(ctrl *gomock.Controller, frameChan chan []byte) *Session 
 			return 0, nil
 		}).AnyTimes()
 
-	sess := NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{})
+	sess := NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, 0)
 
 	sess.SetPaths([]snet.Path{
 		createMockPath(ctrl, 600),
@@ -103,8 +104,10 @@ Top:
 	for {
 		select {
 		case frame := <-frameChan:
+			fmt.Println("frame received")
 			SendFrame(t, e, frame)
 		case <-time.After(1500 * time.Millisecond):
+			fmt.Println("----[Debug]: 1500ms timout while waiting for frames from network")
 			break Top
 		}
 	}

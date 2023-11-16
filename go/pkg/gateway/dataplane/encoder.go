@@ -16,6 +16,7 @@ package dataplane
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -78,7 +79,7 @@ func newEncoder(sessionID uint8, streamID uint32, mtu uint16) *encoder {
 		streamID:  streamID,
 		seq:       0,
 		ring:      newPktRing(),
-		frame:     make([]byte, 0, mtu),
+		frame:     make([]byte, 0, mtu-1), // MTU - 1 because the SSS takes up one tag bit for reconstruction
 	}
 	e.Lock()
 	return e
@@ -95,10 +96,53 @@ func (e *encoder) Write(pkt []byte) {
 	e.ring.Write(pkt, false)
 }
 
-// Read reads a frame from the encoder.
+// Reads a group of SIG frames from the encoder where each frame consists of a stream of shares.
 // The function blocks if there are no frames available.
 // When the encoder is closed, the function returns nil.
-func (e *encoder) Read() []byte {
+func (e *encoder) Read(N int, T int) [][]byte {
+
+	if T > N || N > 255 || T < 1 || N < 1 {
+		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
+		panic("Invalid N or T")
+	}
+
+	// Get the SIG frame, then apply SSS to the content.
+	// Be sure to leave one byte empty because SSS expands into that
+	fmt.Println("Calling SIGFrame ---1")
+	unencryptedFrame := e.ReadRegularSIGFrame()
+	fmt.Println("Called SIGFrame ---2")
+
+	if unencryptedFrame == nil {
+		// Sender was closed and all the buffered frames were sent.
+		return nil
+	}
+
+	shares, err := Split(unencryptedFrame[hdrLen:], N, T)
+	if err != nil {
+		fmt.Println("Error splitting frame")
+		fmt.Printf("N=%d, T=%d\n", N, T)
+		panic(err)
+	}
+
+	encryptedFrames := make([][]byte, N)
+	for i := 0; i < N; i++ {
+		encryptedFrames[i] = make([]byte, hdrLen+len(shares[i]))
+		// copy over the header from the unencrypted frame
+		copy(encryptedFrames[i], unencryptedFrame[:hdrLen])
+		// update the last byte of the sequence number to be the path ID
+		encryptedFrames[i][seqPos+7] = byte(i)
+		// copy over the share
+		copy(encryptedFrames[i][hdrLen:], shares[i])
+	}
+
+	return encryptedFrames
+
+}
+
+// Reads a SIG frame from the encoder.
+// The function blocks if there are no frames available.
+// When the encoder is closed, the function returns nil.
+func (e *encoder) ReadRegularSIGFrame() []byte {
 	e.frame = e.frame[:hdrLen]
 	// Write the header.
 	e.frame[versionPos] = 0
@@ -106,8 +150,9 @@ func (e *encoder) Read() []byte {
 	binary.BigEndian.PutUint16(e.frame[indexPos:indexPos+2], 0xffff)
 	binary.BigEndian.PutUint32(e.frame[streamPos:streamPos+4], e.streamID&0xfffff)
 	binary.BigEndian.PutUint64(e.frame[seqPos:seqPos+8], e.seq)
-	// Increase the sequence number.
-	e.seq++
+
+	// Increase the sequence number of the group
+	e.seq += 256
 	// First, use the data remaining from the last packet, if any.
 	var pos int = hdrLen
 	if len(e.pkt) > 0 {
@@ -116,9 +161,12 @@ func (e *encoder) Read() []byte {
 			return e.frame[:pos]
 		}
 	}
+
+	fmt.Println("Debug ----------------- 1")
 	// Read more packets and fill in as much of the frame as possible.
 	var indexSet bool
 	for {
+		fmt.Println("Debug ----------------- 2")
 		// Check whether one more packet would fit into the frame.
 		// At least 40B are needed to fit IPv6 header into it.
 		if cap(e.frame)-pos < 40 {
@@ -135,12 +183,16 @@ func (e *encoder) Read() []byte {
 		if block {
 			e.Unlock()
 		}
+		fmt.Println("Debug ----------------- 3")
 		var n int
 		e.pkt, n = e.ring.Read(block)
+		fmt.Println("Debug ----------------- 3.0")
 
 		// Obtain the lock to prevent frame buffer from being resized during the frame generation.
 		if block {
+			fmt.Println("e.encoder: Locking")
 			e.Lock()
+			fmt.Println("e.encoder: Acquired Lock -----------------")
 		}
 
 		if n == 0 {
@@ -148,6 +200,7 @@ func (e *encoder) Read() []byte {
 			return e.frame[:pos]
 		}
 		if n == -1 {
+			fmt.Println("Debug ----------------- 3.1")
 			if block {
 				// Ringbuffer was closed.
 				return nil
@@ -158,6 +211,7 @@ func (e *encoder) Read() []byte {
 				return e.frame[:pos]
 			}
 		}
+		fmt.Println("Debug ----------------- 4")
 		// We've got a packet to stuff into the frame.
 		// Let's make sure that it is a valid IPv4 or IPv6 packet.
 		if len(e.pkt) == 0 {
@@ -184,6 +238,7 @@ func (e *encoder) Read() []byte {
 		default:
 			continue
 		}
+		fmt.Println("Debug ----------------- 5")
 		// Set the first packet index in the frame header if appropriate.
 		if !indexSet {
 			binary.BigEndian.PutUint16(e.frame[indexPos:indexPos+2], uint16(pos-hdrLen))

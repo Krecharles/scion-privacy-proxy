@@ -85,6 +85,7 @@ func (d *IngressServer) read(ctx context.Context) error {
 		n := newFrameBufs(frames)
 		for i := 0; i < n; i++ {
 			frame := frames[i].(*frameBuf)
+			// Read the bytes into frame.raw
 			read, src, err := d.Conn.ReadFrom(frame.raw)
 			if err != nil {
 				logger.Error("IngressServer: Unable to read from external ingress", "err", err)

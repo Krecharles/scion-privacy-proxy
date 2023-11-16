@@ -16,7 +16,6 @@ package dataplane
 
 import (
 	"bytes"
-	"container/list"
 	"context"
 	"fmt"
 
@@ -34,12 +33,16 @@ type reassemblyList struct {
 	numPaths          uint8
 	snd               ingressSender
 	markedForDeletion bool
-	entries           *list.List
-	buf               *bytes.Buffer
-	tooOld            metrics.Counter
-	duplicate         metrics.Counter
-	evicted           metrics.Counter
-	invalid           metrics.Counter
+	// a map of framebuffers with keys being their sequence numbers except for the last 8 bits
+	fbgs map[uint64]*frameBufGroup
+	// the sequence number of the next frame to be released, is used to check if a frame is too old
+	currentGroupSeqNr uint64 // TODO don't forget
+	// the current packet being built.
+	buf       *bytes.Buffer
+	tooOld    metrics.Counter
+	duplicate metrics.Counter
+	evicted   metrics.Counter
+	invalid   metrics.Counter
 }
 
 // newReassemblyList returns a ReassemblyList object for the given epoch and with
@@ -53,8 +56,9 @@ func newReassemblyList(epoch int, capacity int, s ingressSender, numPahts uint8,
 		numPaths:          numPahts,
 		snd:               s,
 		markedForDeletion: false,
-		entries:           list.New(),
+		fbgs:              make(map[uint64]*frameBufGroup),
 		buf:               bytes.NewBuffer(make([]byte, 0, frameBufCap)),
+		currentGroupSeqNr: 0,
 	}
 	if framesDiscarded != nil {
 		list.tooOld = framesDiscarded.With("reason", "too_old")
@@ -70,128 +74,91 @@ func newReassemblyList(epoch int, capacity int, s ingressSender, numPahts uint8,
 // that involve the newly added frame. Completely processed frames get removed from the
 // list and released to the pool of frame buffers.
 func (l *reassemblyList) Insert(ctx context.Context, frame *frameBuf) {
-	logger := log.FromCtx(ctx)
+
+	// TODO remove this comment
 	// If this is the first frame, write all complete packets to the wire and
 	// add the frame to the reassembly list if it contains a fragment at the end.
-	if l.entries.Len() == 0 {
-		l.insertNewGroup(frame)
-		return
-	}
-	groupSeqNr := frame.seqNr >> 8
-	first := l.entries.Front()
-	firstFrameGroup := first.Value.(*frameBufGroup)
-	// Check whether frame is too old.
-	if groupSeqNr < firstFrameGroup.groupSeqNr {
+
+	fmt.Println("Rlist.Insert ----------- 1")
+	groupSeqNr := uint64(frame.seqNr >> 8)
+
+	if groupSeqNr < l.currentGroupSeqNr {
 		increaseCounterMetric(l.tooOld, 1)
 		frame.Release()
 		return
 	}
-	last := l.entries.Back()
-	lastFrameGroup := last.Value.(*frameBufGroup)
+	fbg, ok := l.fbgs[groupSeqNr]
 
-	// If there is a gap between this frame and the last in the reassembly list,
-	// remove all packets from the reassembly list and only add this frame.
-	if groupSeqNr > lastFrameGroup.groupSeqNr+1 {
-		logger.Debug(fmt.Sprintf("Detected dropped frameGroup(s). Discarding %d frames.",
-			l.entries.Len()), "epoch", l.epoch, "groupSegNr", groupSeqNr,
-			"currentNewest", lastFrameGroup.groupSeqNr)
-		increaseCounterMetric(l.evicted, float64(l.entries.Len()))
-		l.removeAll()
-		l.insertNewGroup(frame)
-		return
-	}
-	// Check if we have capacity.
-	if l.entries.Len() == l.capacity {
-		logger.Info("Reassembly list reached maximum capacity", "epoch", l.epoch, "cap", l.capacity)
-		increaseCounterMetric(l.evicted, float64(l.entries.Len()))
-		l.removeBefore(last)
-		first = last
-		firstFrameGroup = first.Value.(*frameBufGroup)
+	if !ok {
+		// There is no fbg for the groupSeqNr, so create one
+		fbg = NewFrameBufGroup(frame, l.numPaths)
+		fmt.Println("Created a new FBG for ", groupSeqNr, frame.seqNr)
+		l.fbgs[groupSeqNr] = fbg
 	}
 
-	// Check if the frame belongs to old group.
-	if groupSeqNr >= firstFrameGroup.groupSeqNr && groupSeqNr <= lastFrameGroup.groupSeqNr {
-		// Find the frame with the same groupSeqNr
-		curr := first
-		for curr.Value.(*frameBufGroup).groupSeqNr < groupSeqNr {
-			curr = curr.Next()
-		}
-		currFrameGroup := curr.Value.(*frameBufGroup)
-		if currFrameGroup.groupSeqNr != groupSeqNr {
-			// Should never happen.
-			logger.Error("Cannot find frame group", "groupSeqNr", groupSeqNr)
-			// Safest to remove all frames in the list.
-			l.removeBefore(last)
-			frame.Release()
-			return
-		}
-		frameIndex := GetPathIndex(frame)
-		if frameIndex >= currFrameGroup.numPaths {
+	// TODO insert checks for missing packets, duplicates and for too young packets
+	// TODO check if we have capacity.
 
-			logger.Error(fmt.Sprintf("Cannot assign path index %d for %d paths.", frameIndex, currFrameGroup.numPaths))
-			return
-		}
-		frameInserted := false
-		for e := currFrameGroup.frames.Front(); e != nil; e = e.Next() {
-			currFrame := e.Value.(*frameBuf)
-			currFrameIndex := GetPathIndex(currFrame)
-			if currFrameIndex == frameIndex {
-				logger.Debug("Received duplicate frame.", "epoch", l.epoch, "seqNr", frame.seqNr)
-				increaseCounterMetric(l.duplicate, 1)
-				return
-			}
-			if currFrameIndex > frameIndex {
-				frameInserted = true
-				currFrameGroup.frames.InsertBefore(frame, e)
-				break
-			}
-		}
-		if !frameInserted {
-			currFrameGroup.frames.PushBack(frame)
-		}
-		currFrameGroup.frameCnt++
+	if ok {
+		fbg.Insert(frame)
 	}
 
-	// Check if the frame belongs to next group
-	if groupSeqNr == lastFrameGroup.groupSeqNr+1 {
-		l.insertNewGroup(frame)
-	}
 	l.tryReassemble(ctx)
-	// l.printInfo()
-}
-
-func (l *reassemblyList) insertNewGroup(frame *frameBuf) {
-	fbg := NewFrameBufGroup(frame, l.numPaths)
-	if fbg != nil {
-		l.entries.PushBack(fbg)
-	}
 }
 
 // tryReassemble checks if a packet can be reassembled from the reassembly list.
 func (l *reassemblyList) tryReassemble(ctx context.Context) {
 	logger := log.FromCtx(ctx)
-	start := l.entries.Front()
-	startFrameGroup := start.Value.(*frameBufGroup)
-	if !startFrameGroup.TryAndCombine() {
+
+	fmt.Println("----tryReassmble() ---- 1", l.currentGroupSeqNr)
+
+	startFbg, ok := l.fbgs[l.currentGroupSeqNr]
+
+	if !ok {
+		fmt.Println("----[ERROR]: gruopSeqNr not found in fbgs map", l.currentGroupSeqNr, "keys in map:", len(l.fbgs))
+	}
+
+	if !startFbg.TryAndCombine() {
 		return
 	}
-	startFrame := startFrameGroup.combined
+
+	fmt.Println("----tryReassmble() ---- 2")
+
+	startFrame := startFbg.combined
 	startFrame.ProcessCompletePkts(ctx)
+
+	fmt.Println("startFrame", startFbg.combined)
+
 	if startFrame.frag0Start == 0 {
-		// The first frame does not contain a packet start.
-		// Remove the first frame
-		l.removeEntry(start)
-		return
+
+		startFrame.ProcessCompletePkts(ctx)
+
+		// Should never happen.
+		// logger.Error("First frame in reassembly list does not contain a packet start.",
+		// 	"frame", startFrame.String())
+		// fmt.Println("----[ERROR]: First frame in reassembly list does not contain a packet start.")
+		// fmt.Println(startFrame, startFrame.Processed())
+		// // Safest to remove all frames in the list.
+		// increaseCounterMetric(l.evicted, float64(len(l.fbgs)))
+		// l.removeAll()
+		// return
 	}
+
+	fmt.Println("----tryReassmble() ---- 3")
 	bytes := startFrame.frameLen - startFrame.frag0Start
 	canReassemble := false
 	framingError := false
-	for e := start.Next(); e != nil; e = e.Next() {
-		currFrameGroup := e.Value.(*frameBufGroup)
-		if !currFrameGroup.TryAndCombine() {
-			return
+	for seq := l.currentGroupSeqNr; true; seq++ {
+		// check if seq in fbgs
+		if _, ok := l.fbgs[seq]; !ok {
+			break
 		}
-		currFrame := currFrameGroup.combined
+		fmt.Println("----tryReassmble() ---- 3.1")
+		if !l.fbgs[seq].TryAndCombine() {
+			// the next framebufgroup is not ready to be combined yet
+			break
+		}
+		currFrame := l.fbgs[seq].combined
 		// Add number of bytes contained in this frame. This potentially adds
 		// too much, but we are only using it to detect whether we potentially
 		// have everything we need.
@@ -201,6 +168,7 @@ func (l *reassemblyList) tryReassemble(ctx context.Context) {
 			canReassemble = true
 			break
 		}
+		fmt.Println("----tryReassmble() ---- 3.2")
 		if currFrame.index != 0xffff {
 			logger.Error("Framing error occurred. Not enough bytes to reassemble packet",
 				"startFrame", startFrame.String(), "currFrame", currFrame.String(),
@@ -208,21 +176,25 @@ func (l *reassemblyList) tryReassemble(ctx context.Context) {
 			framingError = true
 			break
 		}
+
 	}
+	fmt.Println("----tryReassmble() ---- 4")
 	if canReassemble {
 		l.collectAndWrite(ctx)
 	} else if framingError {
 		increaseCounterMetric(l.invalid, 1)
-		l.removeBefore(l.entries.Back())
+		// TODO fix line below
+		// l.removeBefore(l.entries.Back())
 	}
 }
 
 // collectAndWrite reassembles the packet in the reassembly list and writes it
 // out to the buffer. It will also write every complete packet in the last frame.
 func (l *reassemblyList) collectAndWrite(ctx context.Context) {
+	fmt.Println("rlist.collectAndWrite()", l.currentGroupSeqNr)
 	logger := log.FromCtx(ctx)
-	start := l.entries.Front()
-	startFrame := start.Value.(*frameBufGroup).combined
+	startFbg := l.fbgs[l.currentGroupSeqNr]
+	startFrame := startFbg.combined
 	// Reset reassembly buffer.
 	l.buf.Reset()
 	// Collect the start of the packet.
@@ -232,21 +204,26 @@ func (l *reassemblyList) collectAndWrite(ctx context.Context) {
 	startFrame.SetProcessed()
 	// Collect rest.
 	var frame *frameBuf
-	for e := start.Next(); l.buf.Len() < pktLen && e != nil; e = e.Next() {
-		frame = e.Value.(*frameBufGroup).combined
+	for seq := l.currentGroupSeqNr; true; seq++ {
+		frame = l.fbgs[seq].combined
 		missingBytes := pktLen - l.buf.Len()
 		l.buf.Write(
 			// Write all bytes excluding the SIG header. This reconstructs the IP header
 			frame.raw[sigHdrSize:intMin(missingBytes+sigHdrSize, frame.frameLen)],
 		)
+		fmt.Println("CollectAndWrite() ------- 2")
+		l.currentGroupSeqNr = seq + 1
 		frame.fragNProcessed = true
+		l.fbgs[seq].Release()
 	}
+
 	// Check length of the reassembled packet.
 	if l.buf.Len() != pktLen {
 		logger.Error("Packet len for reassembled packet does not match header",
 			"expected", pktLen, "have", l.buf.Len())
 	} else {
 		// Write the packet to the wire.
+		fmt.Println("----[Debug]:  Writing packet to wire via rlist")
 		if err := l.snd.send(l.buf.Bytes()); err != nil {
 			logger.Error("Unable to send reassembled packet", "err", err)
 		}
@@ -257,44 +234,33 @@ func (l *reassemblyList) collectAndWrite(ctx context.Context) {
 	l.removeProcessed()
 }
 
-func (l *reassemblyList) removeEntry(e *list.Element) {
-	frameGroup := e.Value.(*frameBufGroup)
-	frameGroup.Release()
-	l.entries.Remove(e)
-}
-
+// remove every fbg that has a groupSeqNr smaller than the lastSentGroupSeqNr
 func (l *reassemblyList) removeProcessed() {
-	var next *list.Element
-	for e := l.entries.Front(); e != nil; e = next {
-		frame := e.Value.(*frameBufGroup)
-		next = e.Next()
-		if frame.combined.Processed() {
-			l.removeEntry(e)
+
+	fmt.Println("rlist.removeProcessed()")
+
+	for groupSeqNr, fbg := range l.fbgs {
+
+		if fbg.combined.Processed() {
+			if l.currentGroupSeqNr < groupSeqNr {
+				l.currentGroupSeqNr = groupSeqNr
+				fmt.Println("updated currentGroupSeqNr to ", l.currentGroupSeqNr)
+			}
+			fbg.Release()
+			delete(l.fbgs, groupSeqNr)
 		}
+
 	}
+
 }
 
+// Deletes all entries in fbgs
 func (l *reassemblyList) removeAll() {
-	l.removeBefore(nil)
-}
-
-func (l *reassemblyList) removeBefore(ele *list.Element) {
-	var next *list.Element
-	for e := l.entries.Front(); e != ele; e = next {
-		next = e.Next()
-		l.removeEntry(e)
+	for groupSeqNr, fbg := range l.fbgs {
+		delete(l.fbgs, groupSeqNr)
+		fbg.Release()
 	}
-}
-
-func (l *reassemblyList) printInfo() {
-	if l.entries.Len() == 0 {
-		return
-	}
-	first := l.entries.Front()
-	firstFrameGroup := first.Value.(*frameBufGroup)
-	last := l.entries.Back()
-	lastFrameGroup := last.Value.(*frameBufGroup)
-	fmt.Println("first seq:", firstFrameGroup.groupSeqNr, "last seq:", lastFrameGroup.groupSeqNr)
+	l.fbgs = make(map[uint64]*frameBufGroup)
 }
 
 func intMin(x, y int) int {

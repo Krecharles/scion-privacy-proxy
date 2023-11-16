@@ -15,6 +15,7 @@
 package dataplane
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/scionproto/scion/go/lib/addr"
@@ -105,6 +106,8 @@ func (c *sender) run() {
 			// Sender was closed and all the buffered frames were sent.
 			break
 		}
+
+		fmt.Println("----[Debug]: sender wrote frame to network")
 		_, err := c.conn.WriteTo(frame, c.address)
 		if err != nil {
 			increaseCounterMetric(c.metrics.SendExternalErrors, 1)
