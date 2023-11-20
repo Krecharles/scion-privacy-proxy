@@ -13,3 +13,9 @@ also developed at the smae group, the code can be found
 [here](https://github.com/vincent10400094/scion/tree/feature-packet-splitting). The project is built
 on top of [SCION](http://www.scion-architecture.net) (Scalability, Control and Isolation On
 next-generation Networks).
+
+
+## Acknowledgements
+This project makes use of [hashicorp's implementation of Shamir's secret sharing
+scheme](github.com/hashicorp/vault). Their License is reproduced in the shamir.go file, which is the
+only code copied from their repository. 

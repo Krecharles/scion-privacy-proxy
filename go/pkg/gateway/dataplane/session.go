@@ -15,17 +15,15 @@
 package dataplane
 
 import (
-	"encoding/binary"
 	"fmt"
 	"hash/crc64"
 	"net"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/SSSaaS/sssa-golang"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/metrics"
@@ -66,22 +64,22 @@ type Session struct {
 	// senders is a list of currently used senders.
 	senders []*sender
 	// multipath encoder
-	encoder *encoder
-	// seq is the next frame sequence number to use.
-	seq uint64
+	encoder          *encoder
+	redundancyFactor int
 }
 
 func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 	dataPlaneConn net.PacketConn, pathStatsPublisher PathStatsPublisher,
-	metrics SessionMetrics) *Session {
+	metrics SessionMetrics, redundancyFactor int) *Session {
 	sess := &Session{
 		SessionID:          sessionId,
 		GatewayAddr:        gatewayAddr,
 		DataPlaneConn:      dataPlaneConn,
 		PathStatsPublisher: pathStatsPublisher,
 		Metrics:            metrics,
-		encoder:            newEncoder(sessionId, NewStreamID(), 600),
-		seq:                0,
+		// TODO handle the MTU correctly
+		encoder:          newEncoder(sessionId, NewStreamID(), 600),
+		redundancyFactor: redundancyFactor,
 	}
 	go func() {
 		defer log.HandlePanic()
@@ -93,6 +91,10 @@ func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 // Close signals that the session should close up its internal Connections. Close returns as
 // soon as forwarding goroutines are signaled to shut down (never blocks).
 func (s *Session) Close() {
+
+	fmt.Println("----[DEBUG]: Session.Close()")
+
+	// senders will be closed in run() once encoder.Read() returns nil.
 	for _, snd := range s.senders {
 		snd.Close()
 	}
@@ -105,9 +107,7 @@ func (s *Session) Write(packet gopacket.Packet) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if len(s.senders) == 0 {
-		return
-	}
+	// fmt.Println("----[DEBUG]: Session.Write()")
 	s.encoder.Write(packet.Data())
 }
 
@@ -134,9 +134,7 @@ func (s *Session) String() string {
 // reordering issues.
 func (s *Session) SetPaths(paths []snet.Path) error {
 	s.mutex.Lock()
-	s.encoder.Lock()
 	defer s.mutex.Unlock()
-	defer s.encoder.Unlock()
 
 	created := make([]*sender, 0, len(paths))
 	reused := make(map[*sender]bool, len(s.senders))
@@ -190,51 +188,64 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 }
 
 func (s *Session) run() {
+	fmt.Println("----[DEBUG]: Session is running")
 	for {
 
 		// There is a race condition issue.
 		// If the paths changes after encoder.Read() returns and before the mutex is locked,
 		// the value of currentMtuSum will be different to len(frame)
 
-		frame := s.encoder.Read()
+		// ensure paths don't change while sending packets
+		// s.mutex.Lock()
 
-		if frame == nil {
+		N := len(s.senders)
+		if N > 5 {
+			N = 5
+		}
+		T := N - s.redundancyFactor
+		startTime := time.Now()
+		for T < 2 {
+			// only read packets when at least 2 paths are needed to decrypt the message
+			// -fmt.Println("session.run(), Waiting for more paths (T < 2)")
+
+			// TODO check regularly if encoder has closed. If there are not enough paths,
+			// but the encoder closes, it cannot signal the close operation to the session
+			// is it does this by returning nil on Read().]
+
+			// s.pathsCond.Wait()
+			N = len(s.senders)
+			T = N - s.redundancyFactor
+
+			if time.Since(startTime) > time.Second {
+				fmt.Println("----[ERROR]: 1 second has passed and still not enough paths. N=", N, "T=", T)
+				panic("not enough paths")
+			}
+
+		}
+
+		if T > 2 {
+			T = 2
+		}
+
+		shares := s.encoder.Read(N, T)
+
+		if shares == nil {
+
 			// Sender was closed and all the buffered frames were sent.
+			fmt.Println("----[Debug]: Session.run() ---- Sender was closed")
 			break
 		}
 
-		// Split and interleave the packets, then send through selected paths.
-		s.splitAndSend(frame)
-		s.seq++
+		for pathID, sender := range s.senders {
+			// copy frame and change sequence according to the pathID
+
+			sender.Write(shares[pathID])
+
+		}
+
+		// s.mutex.Unlock()
+
 	}
-}
-
-// Split frame with each path's MTU .
-func (s *Session) splitAndSend(frame []byte) {
-
-	N := len(s.senders)
-	T := N - 1
-
-	fmt.Println("splitAndSend, N:", N, "frame: ", frame[hdrLen:], len(frame))
-	shares, err := sssa.Create(T, N, string(frame[hdrLen:]))
-
-	if err != nil {
-		log.HandlePanic()
-	}
-
-	// Send the same data over every path for now
-	for pathID, sender := range s.senders {
-		// copy frame and change sequence according to the pathID
-
-		newFrame := make([]byte, hdrLen+len(shares[pathID]))
-		copy(newFrame, frame)
-		// update the sequence number to accomodate for the last byte being the pathID
-		binary.BigEndian.PutUint64(newFrame[seqPos:seqPos+8], (s.seq<<8)+uint64(pathID))
-		// copy the shares into the newframe
-		copy(newFrame[hdrLen:], []byte(shares[pathID]))
-		sender.Write(newFrame)
-	}
-
 }
 
 func findSenderWithPath(senders []*sender, path snet.Path) (*sender, bool) {
@@ -257,40 +268,4 @@ func pathsEqual(x, y snet.Path) bool {
 		x.Metadata() != nil && y.Metadata() != nil &&
 		x.Metadata().MTU == y.Metadata().MTU &&
 		x.Metadata().Expiry.Equal(y.Metadata().Expiry)
-}
-
-func extractQuintuple(packet gopacket.Packet) []byte {
-	// Protocol number and addresses.
-	var proto layers.IPProtocol
-	var q []byte
-	switch ip := packet.NetworkLayer().(type) {
-	case *layers.IPv4:
-		q = []byte{byte(ip.Protocol)}
-		q = append(q, ip.SrcIP...)
-		q = append(q, ip.DstIP...)
-		proto = ip.Protocol
-	case *layers.IPv6:
-		q = []byte{byte(ip.NextHeader)}
-		q = append(q, ip.SrcIP...)
-		q = append(q, ip.DstIP...)
-		proto = ip.NextHeader
-	default:
-		panic(fmt.Sprintf("unexpected network layer %T", packet.NetworkLayer()))
-	}
-	// Ports.
-	switch proto {
-	case layers.IPProtocolTCP:
-		pos := len(q)
-		q = append(q, 0, 0, 0, 0)
-		tcp := packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
-		binary.BigEndian.PutUint16(q[pos:pos+2], uint16(tcp.SrcPort))
-		binary.BigEndian.PutUint16(q[pos+2:pos+4], uint16(tcp.DstPort))
-	case layers.IPProtocolUDP:
-		pos := len(q)
-		q = append(q, 0, 0, 0, 0)
-		udp := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
-		binary.BigEndian.PutUint16(q[pos:pos+2], uint16(udp.SrcPort))
-		binary.BigEndian.PutUint16(q[pos+2:pos+4], uint16(udp.DstPort))
-	}
-	return q
 }

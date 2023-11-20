@@ -3,6 +3,8 @@ load("//lint:go.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = [
+        "shamir.go",
+        "decoder.go",
         "atomicroutingtable.go",
         "diagnostics.go",
         "doc.go",
@@ -42,17 +44,17 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = [
+        "session_test.go",
+        "worker_test.go",
+        "encoder_test.go",
+        "privacyproxy_test.go",
         "atomicroutingtable_test.go",
         "diagnostics_test.go",
-        "encoder_test.go",
         "export_test.go",
         "ipforwarder_test.go",
         "pktring_test.go",
         "routingtable_test.go",
         "sender_test.go",
-        "privacyproxy_test.go",
-        "session_test.go",
-        "worker_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":go_default_library"],

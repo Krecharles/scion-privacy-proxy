@@ -113,7 +113,8 @@ func (f *FilteringPathSelector) Select(selectables []Selectable, current Fingerp
 		info = append(info, fmt.Sprintf(format, rejectedInfo, path))
 	}
 
-	pathCount := f.PathCount
+	// pathCount := f.PathCount
+	pathCount := 3
 	if pathCount == 0 {
 		pathCount = 1
 	}

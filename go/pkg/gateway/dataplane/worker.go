@@ -50,21 +50,20 @@ type worker struct {
 	rlists           map[int]*reassemblyList
 	markedForCleanup bool
 	tunIO            io.WriteCloser
-	// number of paths required to decrypt, not total number of paths
-	numPaths uint8
+	decoder          decoder
 }
 
-func newWorker(remote *snet.UDPAddr, sessID uint8,
-	tunIO io.WriteCloser, metrics IngressMetrics, numPaths uint8) *worker {
+func newWorker(remote *snet.UDPAddr, sessID uint8, requiredSharesForDecode int,
+	tunIO io.WriteCloser, metrics IngressMetrics) *worker {
 
 	worker := &worker{
-		Remote:   remote,
-		SessID:   sessID,
-		Ring:     ringbuf.New(64, nil, fmt.Sprintf("ingress_%s_%d", remote.IA, sessID)),
-		rlists:   make(map[int]*reassemblyList),
-		tunIO:    tunIO,
-		Metrics:  metrics,
-		numPaths: numPaths,
+		Remote:  remote,
+		SessID:  sessID,
+		Ring:    ringbuf.New(64, nil, fmt.Sprintf("ingress_%s_%d", remote.IA, sessID)),
+		rlists:  make(map[int]*reassemblyList),
+		tunIO:   tunIO,
+		Metrics: metrics,
+		decoder: *newDecoder(requiredSharesForDecode),
 	}
 
 	return worker
@@ -116,16 +115,24 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 	// If index == 0xffff then we can be sure that there are no complete packets in this
 	// frame.
 	frame.completePktsProcessed = index == 0xffff
+
+	// Add frame to a decoder structure
+	decodedFrame := w.decoder.Insert(frame)
+	// Check if decoder was successful
+	if decodedFrame == nil {
+		return
+	}
+
+	// fmt.Println("----[Debug]: worker.processFrame() Inserting frame with seqNr", frame.seqNr, "len", frame.frameLen, "index", frame.index)
 	// Add to frame buf reassembly list.
 	rlist := w.getRlist(epoch)
-	// Insert into rlist and write completely contained packets to wire.
-	rlist.Insert(ctx, frame)
+	rlist.Insert(ctx, decodedFrame)
 }
 
 func (w *worker) getRlist(epoch int) *reassemblyList {
 	rlist, ok := w.rlists[epoch]
 	if !ok {
-		rlist = newReassemblyList(epoch, reassemblyListCap, w, w.numPaths, w.Metrics.FramesDiscarded)
+		rlist = newReassemblyList(epoch, reassemblyListCap, w, w.Metrics.FramesDiscarded)
 		w.rlists[epoch] = rlist
 	}
 	rlist.markedForDeletion = false
@@ -153,6 +160,7 @@ func (w *worker) cleanup() {
 }
 
 func (w *worker) send(packet []byte) error {
+	fmt.Println("----[Debug]: worker.send() Sending packet to tunIO")
 	bytesWritten, err := w.tunIO.Write(packet)
 	if err != nil {
 		increaseCounterMetric(w.Metrics.SendLocalError, 1)

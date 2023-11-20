@@ -105,6 +105,8 @@ func (c *sender) run() {
 			// Sender was closed and all the buffered frames were sent.
 			break
 		}
+
+		// fmt.Println("----[Debug]: sender wrote frame to network, ", frame)
 		_, err := c.conn.WriteTo(frame, c.address)
 		if err != nil {
 			increaseCounterMetric(c.metrics.SendExternalErrors, 1)

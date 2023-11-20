@@ -85,6 +85,7 @@ func (d *IngressServer) read(ctx context.Context) error {
 		n := newFrameBufs(frames)
 		for i := 0; i < n; i++ {
 			frame := frames[i].(*frameBuf)
+			// Read the bytes into frame.raw
 			read, src, err := d.Conn.ReadFrom(frame.raw)
 			if err != nil {
 				logger.Error("IngressServer: Unable to read from external ingress", "err", err)
@@ -148,7 +149,7 @@ func (d *IngressServer) dispatch(ctx context.Context, frame *frameBuf, src *snet
 		// Handle will be cleaned up when worker goroutine finishes.
 
 		// TODO decide more smartly how to handle numpaths
-		worker = newWorker(src, frame.sessId, handle, metrics, 2)
+		worker = newWorker(src, frame.sessId, 2, handle, metrics)
 		d.workers[dispatchStr] = worker
 		go func() {
 			defer log.HandlePanic()

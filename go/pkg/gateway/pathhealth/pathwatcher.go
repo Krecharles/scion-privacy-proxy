@@ -168,7 +168,7 @@ func (w *pathWatcher) Run(ctx context.Context) {
 		w.drainConn(ctx)
 	}()
 
-	logger.Info("Starting path watcher", "path", fmt.Sprint(w.path.Path))
+	// logger.Info("Starting path watcher", "path", fmt.Sprint(w.path.Path))
 	defer logger.Info("Stopped path watcher")
 
 	probeTicker := time.NewTicker(w.probeInterval)
