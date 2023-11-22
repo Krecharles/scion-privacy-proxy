@@ -17,7 +17,6 @@ package dataplane
 import (
 	"encoding/binary"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -65,23 +64,18 @@ type encoder struct {
 	// frame is the frame being built at the moment.
 	// To avoid allocations, we reuse the same frame buffer over and over again.
 	frame []byte
-	// Mutex for the frame buffer, preventing buffer from resizing when there is some packets within.
-	// The mutex is locked all the time, and it's only unlocked when e.Read() is blocked, and is
-	// locked again after e.Read() returns.
-	frameMtx sync.Mutex
 }
 
 // newEncoder creates a new encoder instance.
 // mtu is max size of the frame, excluding SCION header, but including SIG header.
-func newEncoder(sessionID uint8, streamID uint32, mtu uint16) *encoder {
+func newEncoder(sessionID uint8, streamID uint32) *encoder {
 	e := &encoder{
 		sessionID: sessionID,
 		streamID:  streamID,
 		seq:       0,
 		ring:      newPktRing(),
-		frame:     make([]byte, 0, mtu-1), // MTU - 1 because the SSS takes up one tag bit for reconstruction
+		frame:     make([]byte, 0), // MTU - 1 because the SSS takes up one tag bit for reconstruction
 	}
-	e.Lock()
 	return e
 }
 
@@ -99,7 +93,8 @@ func (e *encoder) Write(pkt []byte) {
 // Reads a group of SIG frames from the encoder where each frame consists of a stream of shares.
 // The function blocks if there are no frames available.
 // When the encoder is closed, the function returns nil.
-func (e *encoder) Read(N int, T int) [][]byte {
+func (e *encoder) Read(N int, T int, mtu int) [][]byte {
+	// fmt.Println("----[Debug]: encoder.Read()")
 
 	if T > N || N > 255 || T < 1 || N < 1 {
 		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
@@ -108,15 +103,18 @@ func (e *encoder) Read(N int, T int) [][]byte {
 
 	// Get the SIG frame, then apply SSS to the content.
 	// Be sure to leave one byte empty because SSS expands into that
-	unencryptedFrame := e.ReadRegularSIGFrame()
+	unencryptedFrame := e.ReadRegularSIGFrame(mtu)
 
-	if unencryptedFrame == nil {
-		// Sender was closed and all the buffered frames were sent.
+	if unencryptedFrame == nil || len(unencryptedFrame) <= 16 {
+		// the frame is nil or the frame is just the header.
+		// Or sender was closed and all the buffered frames were sent.
+		// fmt.Println("----[Debug]: encoder.Read(), unencryptedFrame is nil or len(unencryptedFrame) <= 16")
 		return nil
 	}
 
 	shares, err := Split(unencryptedFrame[hdrLen:], N, T)
 	if err != nil {
+		fmt.Println(unencryptedFrame, len(unencryptedFrame))
 		fmt.Println("----[Error]: Error splitting frame")
 		fmt.Printf("N=%d, T=%d\n", N, T)
 		panic(err)
@@ -140,7 +138,8 @@ func (e *encoder) Read(N int, T int) [][]byte {
 // Reads a SIG frame from the encoder.
 // The function blocks if there are no frames available.
 // When the encoder is closed, the function returns nil.
-func (e *encoder) ReadRegularSIGFrame() []byte {
+func (e *encoder) ReadRegularSIGFrame(mtu int) []byte {
+	e.frame = make([]byte, 0, mtu-1) // -1 because the secret sharing scheme takes up one tag byte for reconstruction
 	e.frame = e.frame[:hdrLen]
 	// Write the header.
 	e.frame[versionPos] = 0
@@ -173,19 +172,13 @@ func (e *encoder) ReadRegularSIGFrame() []byte {
 		// data in blocking manner. If there's already some data in the frame we will
 		// still try to stuff it with more packets, but if there are no packets available,
 		// we'll send what we have immediately.
+
 		// The Read() function will only be blocked when there is nothing but the header.
 		// So it's safe to unlock, and let the frame buffer being resized during the time window.
+
 		block := (pos == hdrLen)
-		if block {
-			e.Unlock()
-		}
 		var n int
 		e.pkt, n = e.ring.Read(block)
-
-		// Obtain the lock to prevent frame buffer from being resized during the frame generation.
-		if block {
-			e.Lock()
-		}
 
 		if n == 0 {
 			// No more packets to stuff into the frame. Go on with sending.
@@ -254,14 +247,6 @@ func (e *encoder) copyToFrame() int {
 	copy(e.frame[pos:pos+toCopy], e.pkt[:toCopy])
 	e.pkt = e.pkt[toCopy:]
 	return toCopy
-}
-
-func (e *encoder) Lock() {
-	e.frameMtx.Lock()
-}
-
-func (e *encoder) Unlock() {
-	e.frameMtx.Unlock()
 }
 
 // NewStreamID generates a new random stream ID.

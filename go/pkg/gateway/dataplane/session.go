@@ -25,9 +25,12 @@ import (
 
 	"github.com/google/gopacket"
 
+	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/metrics"
+	"github.com/scionproto/scion/go/lib/slayers"
 	"github.com/scionproto/scion/go/lib/snet"
+	snetpath "github.com/scionproto/scion/go/lib/snet/path"
 )
 
 var (
@@ -59,12 +62,12 @@ type Session struct {
 	DataPlaneConn      net.PacketConn
 	PathStatsPublisher PathStatsPublisher
 	Metrics            SessionMetrics
-
-	mutex sync.Mutex
+	mutex              sync.Mutex
 	// senders is a list of currently used senders.
 	senders []*sender
 	// multipath encoder
 	encoder          *encoder
+	mtu              int
 	redundancyFactor int
 }
 
@@ -78,7 +81,7 @@ func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 		PathStatsPublisher: pathStatsPublisher,
 		Metrics:            metrics,
 		// TODO handle the MTU correctly
-		encoder:          newEncoder(sessionId, NewStreamID(), 600),
+		encoder:          newEncoder(sessionId, NewStreamID()),
 		redundancyFactor: redundancyFactor,
 	}
 	go func() {
@@ -91,23 +94,19 @@ func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 // Close signals that the session should close up its internal Connections. Close returns as
 // soon as forwarding goroutines are signaled to shut down (never blocks).
 func (s *Session) Close() {
-
 	fmt.Println("----[DEBUG]: Session.Close()")
-
 	// senders will be closed in run() once encoder.Read() returns nil.
+	s.mutex.Lock()
 	for _, snd := range s.senders {
 		snd.Close()
 	}
 	s.encoder.Close()
+	s.mutex.Unlock()
 }
 
 // Write encodes the packet and sends it to the network.
 // The packet may be silently dropped.
 func (s *Session) Write(packet gopacket.Packet) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	// fmt.Println("----[DEBUG]: Session.Write()")
 	s.encoder.Write(packet.Data())
 }
 
@@ -184,6 +183,31 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 			string(newSenders[y].pathFingerprint)) == -1
 	})
 	s.senders = newSenders
+
+	// Re-compute MTU after selecting the paths
+	// fmt.Println("----[DEBUG]: Session.SetPaths() ---- Recomputing MTU, oldMtu=", s.mtu)
+	// oldMtu := s.mtu
+	s.mtu = 65535
+	for _, path := range paths {
+
+		// MTU must account for the size of the SCION header.
+		localAddr := s.DataPlaneConn.LocalAddr().(*net.UDPAddr)
+		addrLen := addr.IABytes*2 + len(localAddr.IP) + len(s.GatewayAddr.IP)
+		scionPath, _ := path.Dataplane().(snetpath.SCION)
+		// if !ok {
+		// 	return nil, serrors.New("not a scion path", "type", common.TypeOf(path.Dataplane()))
+		// }
+		pathLen := len(scionPath.Raw)
+
+		pathMtu := int(path.Metadata().MTU) - slayers.CmnHdrLen - addrLen - pathLen - udpHdrLen
+		if pathMtu < s.mtu {
+			s.mtu = pathMtu
+		}
+	}
+	// if oldMtu != s.mtu {
+	// 	fmt.Println("----[DEBUG]: Session.SetPaths() ---- MTU changed from", oldMtu, "to", s.mtu)
+	// }
+
 	return nil
 }
 
@@ -195,57 +219,83 @@ func (s *Session) run() {
 		// If the paths changes after encoder.Read() returns and before the mutex is locked,
 		// the value of currentMtuSum will be different to len(frame)
 
-		// ensure paths don't change while sending packets
-		// s.mutex.Lock()
-
 		N := len(s.senders)
 		if N > 5 {
 			N = 5
 		}
 		T := N - s.redundancyFactor
 		startTime := time.Now()
-		for T < 2 {
+		for T < 2 || s.mtu == 0 {
 			// only read packets when at least 2 paths are needed to decrypt the message
 			// -fmt.Println("session.run(), Waiting for more paths (T < 2)")
 
-			// TODO check regularly if encoder has closed. If there are not enough paths,
-			// but the encoder closes, it cannot signal the close operation to the session
-			// is it does this by returning nil on Read().]
-
-			// s.pathsCond.Wait()
 			N = len(s.senders)
 			T = N - s.redundancyFactor
 
-			if time.Since(startTime) > time.Second {
-				fmt.Println("----[ERROR]: 1 second has passed and still not enough paths. N=", N, "T=", T)
+			if time.Since(startTime) > time.Second*5 {
+				fmt.Println("----[ERROR]: 5 seconds have passed and still not enough paths. N=", N, "T=", T)
 				panic("not enough paths")
 			}
-
 		}
 
 		if T > 2 {
 			T = 2
 		}
 
-		shares := s.encoder.Read(N, T)
-
-		if shares == nil {
-
-			// Sender was closed and all the buffered frames were sent.
-			fmt.Println("----[Debug]: Session.run() ---- Sender was closed")
+		// Get the SIG frame, then apply SSS to the content.
+		// Be sure to leave one byte empty because SSS expands into that
+		unencryptedFrame := s.encoder.ReadRegularSIGFrame(s.mtu) // TODO problem, mtu might change
+		if unencryptedFrame == nil {
+			// sender was closed and all the buffered frames were sent.
+			// fmt.Println("----[Debug]: encoder.Read(), unencryptedFrame is nil or len(unencryptedFrame) <= 16")
 			break
 		}
 
-		for pathID, sender := range s.senders {
-			// copy frame and change sequence according to the pathID
-
-			sender.Write(shares[pathID])
-
+		if T > N || N > 255 || T < 1 || N < 1 {
+			fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
+			panic("Invalid N or T")
 		}
 
-		// s.mutex.Unlock()
+		err := SplitAndSend(s, unencryptedFrame, N, T)
+		if err != nil {
+			fmt.Println(unencryptedFrame, len(unencryptedFrame))
+			fmt.Println("----[Error]: Error splitting frame")
+			fmt.Printf("N=%d, T=%d\n", N, T)
+			panic(err)
+		}
 
 	}
+}
+
+func SplitAndSend(s *Session, frame []byte, N, T int) error {
+	s.mutex.Lock()
+	if T > N || N > 255 || T < 1 || N < 1 {
+		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
+		panic("Invalid N or T")
+	}
+
+	shares, err := Split(frame[hdrLen:], N, T)
+	if err != nil {
+		return err
+	}
+
+	encryptedFrames := make([][]byte, N)
+	for i := 0; i < N; i++ {
+		encryptedFrames[i] = make([]byte, hdrLen+len(shares[i]))
+		// copy over the header from the unencrypted frame
+		copy(encryptedFrames[i], frame[:hdrLen])
+		// update the last byte of the sequence number to be the path ID
+		encryptedFrames[i][seqPos+7] = byte(i)
+		// copy over the share
+		copy(encryptedFrames[i][hdrLen:], shares[i])
+	}
+
+	for pathID, sender := range s.senders {
+		sender.Write(encryptedFrames[pathID])
+	}
+
+	s.mutex.Unlock()
+	return nil
 }
 
 func findSenderWithPath(senders []*sender, path snet.Path) (*sender, bool) {

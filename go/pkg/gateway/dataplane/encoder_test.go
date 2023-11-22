@@ -46,14 +46,14 @@ func TestEncoder(t *testing.T) {
 	fmt.Println("[Running Test]: encoder_test.go->TestEncoder")
 
 	t.Run("closed ringbuf", func(t *testing.T) {
-		e := newEncoder(1, 2, 1500)
+		e := newEncoder(1, 2)
 		e.Close()
-		f := e.Read(3, 2)
+		f := e.Read(3, 2, 1500)
 		assert.Nil(t, f)
 	})
 
 	t.Run("simple IPv4 packet", func(t *testing.T) {
-		e := newEncoder(1, 2, 1500)
+		e := newEncoder(1, 2)
 		e.Write([]byte{
 			// IPv4 header.
 			0x40, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -61,7 +61,7 @@ func TestEncoder(t *testing.T) {
 			1, 2, 3,
 		})
 		e.Close()
-		f := e.Read(3, 2)
+		f := e.Read(3, 2, 1500)
 		for i, frame := range f {
 			assert.EqualValues(t, []byte{
 				// SIG frame header.
@@ -77,7 +77,7 @@ func TestEncoder(t *testing.T) {
 			1, 2, 3,
 		}, r)
 
-		f = e.Read(3, 2)
+		f = e.Read(3, 2, 1500)
 		assert.Nil(t, f)
 	})
 
