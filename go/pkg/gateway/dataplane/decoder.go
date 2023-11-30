@@ -3,29 +3,27 @@ package dataplane
 type decoder struct {
 	requiredSharesForDecode int
 	fbgs                    map[uint64]*frameBufGroup
-	nextGroupSeqNr          uint64
 }
 
 func newDecoder(requiredSharesForDecode int) *decoder {
 	return &decoder{
 		requiredSharesForDecode: requiredSharesForDecode,
-		nextGroupSeqNr:          0,
 		fbgs:                    make(map[uint64]*frameBufGroup),
 	}
 }
 
 func (d *decoder) Insert(frame *frameBuf) *frameBuf {
-	// fmt.Println("----[Debug]: Inserting new frame seq=", frame.seqNr)
 	groupSeqNr := uint64(frame.seqNr >> 8)
+	// fmt.Println("----[Debug]: Inserting new frame seq=", frame.seqNr, "groupSeqNr=", groupSeqNr)
+	// check if groupSeqNr contained in d.fbgs
 
-	if groupSeqNr < d.nextGroupSeqNr {
-
+	fbg, ok := d.fbgs[groupSeqNr]
+	// check if groupSeqNr already combined
+	if ok && fbg.isCombined {
 		frame.Release()
 		// fmt.Println("----[Debug]: Frame too late, fbg already combined. groupSeqNr=", groupSeqNr)
 		return nil
 	}
-
-	fbg, ok := d.fbgs[groupSeqNr]
 
 	if !ok {
 		// There is no fbg for the groupSeqNr, so create one
@@ -37,12 +35,9 @@ func (d *decoder) Insert(frame *frameBuf) *frameBuf {
 
 	if fbg.TryAndCombine() {
 		// Combination was successful, we can delete the group and return the combined frame
-		// TODO this is probably a memory leak
-		d.nextGroupSeqNr++
-		delete(d.fbgs, groupSeqNr)
+		// delete(d.fbgs, groupSeqNr)
+		// fmt.Println("----[Debug]: Combined frame. frame seq=", fbg.combined.seqNr, "groupSeqNr=", groupSeqNr)
 		return fbg.combined
 	}
 	return nil
-
-	// l.tryReassemble(ctx)
 }

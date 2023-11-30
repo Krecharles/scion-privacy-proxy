@@ -114,6 +114,63 @@ func TestChangingPaths(t *testing.T) {
 	sess.Close()
 }
 
+// func TestReordering(t *testing.T) {
+// 	fmt.Println("[Running Test]: privacyproxy_test.go->TestThreePathsEncryptionWithRandomData")
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	random := rand.New(rand.NewSource(42))
+
+// 	// Unbuffered channel guarantees that the frames won't be sent out
+// 	// immediately, but only when waitFrames is called.
+// 	frameChan := make(chan ([]byte))
+
+// 	sess := createMockSession(ctrl, frameChan)
+
+// 	addr := &snet.UDPAddr{
+// 		IA: xtest.MustParseIA("1-ff00:0:300"),
+// 		Host: &net.UDPAddr{
+// 			IP:   net.IP{192, 168, 1, 1},
+// 			Port: 80,
+// 		},
+// 	}
+
+// 	mt := &MockTun{}
+// 	w := newWorker(addr, 1, 2, mt, IngressMetrics{})
+
+// 	// create a list of randomly generated gopackets and send them
+// 	packets := make([]gopacket.Packet, 2)
+// 	for i := 0; i < 2; i++ {
+// 		packets[i] = generateRandomPayloadPacket(random, i)
+// 		sess.Write(packets[i])
+// 	}
+
+// 	frameBuffer := make([][]byte, 10)
+// 	frameBufferIndex := 0
+
+// Top:
+// 	for {
+// 		select {
+// 		case frame := <-frameChan:
+// 			frameBuffer[frameBufferIndex] = frame
+// 			frameBufferIndex++
+// 		case <-time.After(1500 * time.Millisecond):
+// 			fmt.Println("----[Debug]: 1500ms timout while waiting for frames from network")
+// 			break Top
+// 		}
+// 	}
+
+// 	SendFrame(t, w, frameBuffer[1])
+// 	SendFrame(t, w, frameBuffer[0])
+
+// 	assert.Equal(t, 2, len(mt.packets))
+// 	for i := 0; i < 2; i++ {
+// 		assert.Equal(t, packets[i].Data(), mt.packets[i])
+// 	}
+
+// 	sess.Close()
+// }
+
 func createMockSession(ctrl *gomock.Controller, frameChan chan []byte) *Session {
 	conn := mock_net.NewMockPacketConn(ctrl)
 	conn.EXPECT().LocalAddr().Return(&net.UDPAddr{IP: net.IP{192, 168, 1, 1}}).AnyTimes()

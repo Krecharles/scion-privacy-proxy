@@ -123,7 +123,7 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 		return
 	}
 
-	// fmt.Println("----[Debug]: worker.processFrame() Inserting frame with seqNr", frame.seqNr, "len", frame.frameLen, "index", frame.index)
+	// fmt.Println("----[Debug]: ---- Decoded Frame", decodedFrame.seqNr, "len", decodedFrame.frameLen, "index", decodedFrame.index)
 	// Add to frame buf reassembly list.
 	rlist := w.getRlist(epoch)
 	rlist.Insert(ctx, decodedFrame)
@@ -160,7 +160,7 @@ func (w *worker) cleanup() {
 }
 
 func (w *worker) send(packet []byte) error {
-	fmt.Println("----[Debug]: worker.send() Sending packet to tunIO")
+	// fmt.Println("----[Debug]: worker.send() Sending packet to tunIO. len", len(packet), "seq", binary.BigEndian.Uint32(packet[24:28]))
 	bytesWritten, err := w.tunIO.Write(packet)
 	if err != nil {
 		increaseCounterMetric(w.Metrics.SendLocalError, 1)

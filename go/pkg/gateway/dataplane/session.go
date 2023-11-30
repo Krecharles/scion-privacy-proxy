@@ -232,8 +232,8 @@ func (s *Session) run() {
 			N = len(s.senders)
 			T = N - s.redundancyFactor
 
-			if time.Since(startTime) > time.Second*5 {
-				fmt.Println("----[ERROR]: 5 seconds have passed and still not enough paths. N=", N, "T=", T)
+			if time.Since(startTime) > time.Second*3 {
+				fmt.Println("----[ERROR]: 3 seconds have passed and still not enough paths. N=", N, "T=", T)
 				panic("not enough paths")
 			}
 		}
@@ -251,11 +251,6 @@ func (s *Session) run() {
 			break
 		}
 
-		if T > N || N > 255 || T < 1 || N < 1 {
-			fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
-			panic("Invalid N or T")
-		}
-
 		err := SplitAndSend(s, unencryptedFrame, N, T)
 		if err != nil {
 			fmt.Println(unencryptedFrame, len(unencryptedFrame))
@@ -269,6 +264,7 @@ func (s *Session) run() {
 
 func SplitAndSend(s *Session, frame []byte, N, T int) error {
 	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if T > N || N > 255 || T < 1 || N < 1 {
 		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
 		panic("Invalid N or T")
@@ -294,7 +290,6 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		sender.Write(encryptedFrames[pathID])
 	}
 
-	s.mutex.Unlock()
 	return nil
 }
 
