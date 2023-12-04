@@ -66,23 +66,24 @@ type Session struct {
 	// senders is a list of currently used senders.
 	senders []*sender
 	// multipath encoder
-	encoder          *encoder
-	mtu              int
-	redundancyFactor int
+	encoder        *encoder
+	mtu            int
+	numberOfPathsT int
+	numberOfPathsN int
 }
 
 func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 	dataPlaneConn net.PacketConn, pathStatsPublisher PathStatsPublisher,
-	metrics SessionMetrics, redundancyFactor int) *Session {
+	metrics SessionMetrics, numberOfPathsT int, numberOfPathsN int) *Session {
 	sess := &Session{
 		SessionID:          sessionId,
 		GatewayAddr:        gatewayAddr,
 		DataPlaneConn:      dataPlaneConn,
 		PathStatsPublisher: pathStatsPublisher,
 		Metrics:            metrics,
-		// TODO handle the MTU correctly
-		encoder:          newEncoder(sessionId, NewStreamID()),
-		redundancyFactor: redundancyFactor,
+		numberOfPathsT:     numberOfPathsT,
+		numberOfPathsN:     numberOfPathsN,
+		encoder:            newEncoder(sessionId, NewStreamID()),
 	}
 	go func() {
 		defer log.HandlePanic()
@@ -212,34 +213,22 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 }
 
 func (s *Session) run() {
-	fmt.Println("----[DEBUG]: Session is running")
+	fmt.Println("----[DEBUG]: Session is running, T=", s.numberOfPathsT, "N=", s.numberOfPathsN)
 	for {
 
 		// There is a race condition issue.
 		// If the paths changes after encoder.Read() returns and before the mutex is locked,
 		// the value of currentMtuSum will be different to len(frame)
 
-		N := len(s.senders)
-		if N > 5 {
-			N = 5
-		}
-		T := N - s.redundancyFactor
 		startTime := time.Now()
-		for T < 2 || s.mtu == 0 {
+		for len(s.senders) < s.numberOfPathsN || s.mtu == 0 {
 			// only read packets when at least 2 paths are needed to decrypt the message
 			// -fmt.Println("session.run(), Waiting for more paths (T < 2)")
 
-			N = len(s.senders)
-			T = N - s.redundancyFactor
-
 			if time.Since(startTime) > time.Second*3 {
-				fmt.Println("----[ERROR]: 3 seconds have passed and still not enough paths. N=", N, "T=", T)
+				fmt.Println("----[ERROR]: 3 seconds have passed and still not enough paths.")
 				panic("not enough paths")
 			}
-		}
-
-		if T > 2 {
-			T = 2
 		}
 
 		// Get the SIG frame, then apply SSS to the content.
@@ -251,11 +240,10 @@ func (s *Session) run() {
 			break
 		}
 
-		err := SplitAndSend(s, unencryptedFrame, N, T)
+		err := SplitAndSend(s, unencryptedFrame, s.numberOfPathsN, s.numberOfPathsT)
 		if err != nil {
 			fmt.Println(unencryptedFrame, len(unencryptedFrame))
 			fmt.Println("----[Error]: Error splitting frame")
-			fmt.Printf("N=%d, T=%d\n", N, T)
 			panic(err)
 		}
 
@@ -265,7 +253,7 @@ func (s *Session) run() {
 func SplitAndSend(s *Session, frame []byte, N, T int) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if T > N || N > 255 || T < 1 || N < 1 {
+	if T > N || N > 255 || T < 1 || N < 1 || len(s.senders) < N {
 		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
 		panic("Invalid N or T")
 	}
@@ -286,6 +274,7 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		copy(encryptedFrames[i][hdrLen:], shares[i])
 	}
 
+	fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders))
 	for pathID, sender := range s.senders {
 		sender.Write(encryptedFrames[pathID])
 	}

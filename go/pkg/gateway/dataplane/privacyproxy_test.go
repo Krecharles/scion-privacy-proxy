@@ -180,7 +180,7 @@ func createMockSession(ctrl *gomock.Controller, frameChan chan []byte) *Session 
 			return 0, nil
 		}).AnyTimes()
 
-	sess := NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, 0)
+	sess := NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, 3, 3)
 
 	sess.SetPaths([]snet.Path{
 		createMockPath(ctrl, 100),

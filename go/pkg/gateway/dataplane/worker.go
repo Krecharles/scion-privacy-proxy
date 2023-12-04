@@ -53,7 +53,7 @@ type worker struct {
 	decoder          decoder
 }
 
-func newWorker(remote *snet.UDPAddr, sessID uint8, requiredSharesForDecode int,
+func newWorker(remote *snet.UDPAddr, sessID uint8, numberOfPathsT int,
 	tunIO io.WriteCloser, metrics IngressMetrics) *worker {
 
 	worker := &worker{
@@ -63,7 +63,7 @@ func newWorker(remote *snet.UDPAddr, sessID uint8, requiredSharesForDecode int,
 		rlists:  make(map[int]*reassemblyList),
 		tunIO:   tunIO,
 		Metrics: metrics,
-		decoder: *newDecoder(requiredSharesForDecode),
+		decoder: *newDecoder(numberOfPathsT),
 	}
 
 	return worker

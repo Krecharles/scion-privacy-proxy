@@ -56,7 +56,7 @@ func TestTwoPaths(t *testing.T) {
 	// immediately, but only when waitFrames is called.
 	frameChan := make(chan ([]byte))
 
-	sess := createSession(t, ctrl, frameChan, 0)
+	sess := createSession(t, ctrl, frameChan, 2, 2)
 	sess.SetPaths([]snet.Path{
 		createMockPath(ctrl, 200),
 		createMockPath(ctrl, 201),
@@ -88,7 +88,7 @@ func TestThreePathsEmptyPayload(t *testing.T) {
 	// immediately, but only when waitFrames is called.
 	frameChan := make(chan ([]byte))
 
-	sess := createSession(t, ctrl, frameChan, 1)
+	sess := createSession(t, ctrl, frameChan, 3, 2)
 
 	sess.SetPaths([]snet.Path{
 		createMockPath(ctrl, 600),
@@ -138,7 +138,7 @@ func TestNoLeak(t *testing.T) {
 	// sess.Close()
 }
 
-func createSession(t *testing.T, ctrl *gomock.Controller, frameChan chan []byte, redundancyFactor int) *Session {
+func createSession(t *testing.T, ctrl *gomock.Controller, frameChan chan []byte, T int, N int) *Session {
 	conn := mock_net.NewMockPacketConn(ctrl)
 	conn.EXPECT().LocalAddr().Return(&net.UDPAddr{IP: net.IP{192, 168, 1, 1}}).AnyTimes()
 	conn.EXPECT().WriteTo(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -146,7 +146,7 @@ func createSession(t *testing.T, ctrl *gomock.Controller, frameChan chan []byte,
 			frameChan <- f
 			return 0, nil
 		}).AnyTimes()
-	return NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, redundancyFactor)
+	return NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, T, N)
 }
 
 func sendPacketsWithZeroPayload(t *testing.T, sess *Session, payloadSize int, pktCount int) {

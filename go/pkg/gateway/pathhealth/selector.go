@@ -30,6 +30,11 @@ const (
 	rejectedInfo = "rejected by path policy"
 )
 
+const (
+	NumberOfPathsT = 4
+	NumberOfPathsN = 4
+)
+
 // PathPolicy filters the set of paths.
 type PathPolicy interface {
 	Filter(paths []snet.Path) []snet.Path
@@ -116,7 +121,7 @@ func (f *FilteringPathSelector) Select(selectables []Selectable, current Fingerp
 	}
 
 	// pathCount := f.PathCount
-	pathCount := 3
+	pathCount := NumberOfPathsN
 	if pathCount == 0 {
 		pathCount = 1
 	}
@@ -169,6 +174,8 @@ func isShorter(a, b snet.Path) (bool, bool) {
 	return false, false
 }
 
+var prevSelectedPaths []snet.Path
+
 func buildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 	// fmt.Println("----[Debug]: Building graph using paths", len(paths))
 	g := NewGraph()
@@ -181,23 +188,53 @@ func buildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 	sourceNode := paths[0].Metadata().Interfaces[0].IA.String()
 	destinationNode := paths[0].Metadata().Interfaces[len(paths[0].Metadata().Interfaces)-1].IA.String()
 	selectedPaths := findPaths(g, sourceNode, destinationNode, numberOfPaths)
-	returnedOriginalPaths := make([]snet.Path, 0, len(selectedPaths))
 
-	for _, p := range selectedPaths {
-		opath := matchPathWithOriginalPaths(p, paths)
-		if opath == nil {
-			panic("Path not found")
+	// Compare current selectedPaths with previous selectedPaths
+	if !isSamePathSet(paths, prevSelectedPaths) {
+		returnedOriginalPaths := make([]snet.Path, 0, len(selectedPaths))
+
+		for _, p := range selectedPaths {
+			opath := matchPathWithOriginalPaths(p, paths)
+			if opath == nil {
+				panic("Path not found")
+			}
+			returnedOriginalPaths = append(returnedOriginalPaths, opath)
 		}
-		returnedOriginalPaths = append(returnedOriginalPaths, opath)
 
+		// fmt.Println("----[Debug]: Selected Pathset", selectedPaths)
+
+		// Update previous selectedPaths
+		prevSelectedPaths = paths
+
+		return returnedOriginalPaths
 	}
 
-	// for _, p := range returnedOriginalPaths {
-	// 	fmt.Println(p)
-	// }
+	return prevSelectedPaths
+}
 
-	return returnedOriginalPaths
+func isSamePathSet(paths1, paths2 []snet.Path) bool {
 
+	if len(paths1) != len(paths2) {
+		return false
+	}
+	for i, p := range paths1 {
+		if !isSamePath(p, paths2[i]) {
+			return false
+		}
+	}
+	return true
+}
+func isSamePath(paths1, paths2 snet.Path) bool {
+
+	if len(paths1.Metadata().Interfaces) != len(paths2.Metadata().Interfaces) {
+		return false
+	}
+	for i, hop := range paths1.Metadata().Interfaces {
+		if hop.String() != paths2.Metadata().Interfaces[i].String() {
+			return false
+		}
+	}
+	return true
 }
 
 // match the returned path string with the original paths given to the Select() method, so that no

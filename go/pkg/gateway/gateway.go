@@ -91,7 +91,8 @@ func (dpf DataplaneSessionFactory) New(id uint8, policyID int,
 		conn,
 		dpf.PathStatsPublisher,
 		metrics,
-		0,
+		pathhealth.NumberOfPathsT,
+		pathhealth.NumberOfPathsN,
 	)
 	return sess
 }
