@@ -274,7 +274,7 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		copy(encryptedFrames[i][hdrLen:], shares[i])
 	}
 
-	fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders))
+	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders))
 	for pathID, sender := range s.senders {
 		sender.Write(encryptedFrames[pathID])
 	}

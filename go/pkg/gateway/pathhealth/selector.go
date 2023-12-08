@@ -16,7 +16,6 @@ package pathhealth
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 
@@ -132,7 +131,7 @@ func (f *FilteringPathSelector) Select(selectables []Selectable, current Fingerp
 	if len(allowed) == 0 {
 		fmt.Println("----[Debug]: No paths found")
 		return Selection{
-			Paths:         make([]snet.Path, 0, 0),
+			Paths:         make([]snet.Path, 0),
 			Info:          strings.Join(info, "\n"),
 			PathsAlive:    len(allowed),
 			PathsDead:     len(dead),
@@ -140,8 +139,8 @@ func (f *FilteringPathSelector) Select(selectables []Selectable, current Fingerp
 		}
 	}
 
-	paths := make([]snet.Path, 0, len(allowed))
-	for i := 0; i < len(allowed); i++ {
+	paths := make([]snet.Path, 0, pathCount)
+	for i := 0; i < pathCount; i++ {
 		paths = append(paths, allowed[i].Path)
 	}
 	selectedPaths := buildGraphAndFindPaths(paths, pathCount)
@@ -177,12 +176,14 @@ func isShorter(a, b snet.Path) (bool, bool) {
 var prevSelectedPaths []snet.Path
 
 func buildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
-	// fmt.Println("----[Debug]: Building graph using paths", len(paths))
+	// fmt.Println("----[Debug]: Building graph using paths", len(paths), "numberOfPaths", numberOfPaths)
 	g := NewGraph()
 	for _, path := range paths {
 		ifaces := path.Metadata().Interfaces
 		for i := 0; i < len(ifaces)-1; i += 2 {
-			g.AddEdge(ifaces[i].IA.String(), ifaces[i+1].IA.String())
+			ifaceString := fmt.Sprintf("%s>%s", ifaces[i].ID.String(), ifaces[i+1].ID.String())
+			// fmt.Println("----[Debug]: Adding edge", ifaces[i].IA.String(), ifaces[i+1].IA.String(), ifaceString)
+			g.AddEdge(ifaces[i].IA.String(), ifaces[i+1].IA.String(), ifaceString)
 		}
 	}
 	sourceNode := paths[0].Metadata().Interfaces[0].IA.String()
@@ -202,6 +203,7 @@ func buildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 		}
 
 		// fmt.Println("----[Debug]: Selected Pathset", selectedPaths)
+		fmt.Println("----[Debug]: Selected Paths with probability of compromise", CalcProbabilityOfCompromise(selectedPaths))
 
 		// Update previous selectedPaths
 		prevSelectedPaths = paths
@@ -240,144 +242,30 @@ func isSamePath(paths1, paths2 snet.Path) bool {
 // match the returned path string with the original paths given to the Select() method, so that no
 // information contained in the original variables is lost. This function returns nil if no original
 // path is found.
-func matchPathWithOriginalPaths(path []string, originalPaths []snet.Path) snet.Path {
+func matchPathWithOriginalPaths(path []Edge, originalPaths []snet.Path) snet.Path {
 Outerloop:
 	for _, opath := range originalPaths {
-		if len(opath.Metadata().Interfaces) != (len(path)-1)*2 {
+		if len(opath.Metadata().Interfaces) != 2*len(path) {
 			continue
 		}
-		for i, hop := range path {
-
-			if i == len(path)-1 {
-				if hop != opath.Metadata().Interfaces[2*i-1].IA.String() {
-					continue Outerloop
-				}
-			} else {
-				if hop != opath.Metadata().Interfaces[2*i].IA.String() {
-					continue Outerloop
-				}
+		for i, edge := range path {
+			if edge.Source != opath.Metadata().Interfaces[2*i].IA.String() {
+				continue Outerloop
+			}
+			if edge.Target != opath.Metadata().Interfaces[2*i+1].IA.String() {
+				continue Outerloop
+			}
+			// interface is e.g. 1>551. split the string into a first and second part
+			interfaces := strings.Split(edge.Interface, ">")
+			if interfaces[0] != opath.Metadata().Interfaces[2*i].ID.String() {
+				continue Outerloop
+			}
+			if interfaces[1] != opath.Metadata().Interfaces[2*i+1].ID.String() {
+				continue Outerloop
 			}
 		}
 		return opath
-
 	}
 	fmt.Println("----[Error]: Could not match path with original paths. path:", path, "originalPaths:", originalPaths)
 	return nil
-}
-
-func findPaths(g *Graph, source, target string, n int) [][]string {
-	var paths [][]string
-	for i := 0; i < n; i++ {
-		path, _ := g.Dijkstra(source, target)
-		if len(path) == 0 {
-			break
-		}
-		paths = append(paths, path)
-		// Increase the weight of the edges in the current path
-		for j := 0; j < len(path)-1; j++ {
-			g.SetEdgeWeight(path[j], path[j+1], g.Edges[path[j]][path[j+1]]*100)
-		}
-	}
-	return paths
-}
-
-type Edge struct {
-	Source, Target string
-	Weight         int
-}
-
-type Graph struct {
-	Edges map[string]map[string]int
-}
-
-func NewGraph() *Graph {
-	return &Graph{
-		Edges: make(map[string]map[string]int),
-	}
-}
-
-func (g *Graph) AddEdge(source, target string) {
-	if _, exists := g.Edges[source]; !exists {
-		g.Edges[source] = make(map[string]int)
-	}
-	g.Edges[source][target] = 1 // Default weight
-}
-
-func (g *Graph) SetEdgeWeight(source string, target string, weight int) {
-	if _, exists := g.Edges[source]; exists {
-		if _, exists := g.Edges[source][target]; exists {
-			g.Edges[source][target] = weight
-		}
-	}
-}
-
-func (g *Graph) GetAllNodes() []string {
-	var nodes []string
-	for node := range g.Edges {
-		nodes = append(nodes, node)
-	}
-
-	for _, targets := range g.Edges {
-		for target := range targets {
-			// Check if target node has any outgoing edges
-			if _, exists := g.Edges[target]; !exists {
-				nodes = append(nodes, target)
-			}
-		}
-	}
-
-	return nodes
-}
-
-func (g *Graph) Dijkstra(start, goal string) ([]string, int) {
-	dist := make(map[string]int)
-	prev := make(map[string]string)
-	for _, node := range g.GetAllNodes() {
-		dist[node] = math.MaxInt32
-	}
-	dist[start] = 0
-
-	var unvisited []string
-	for node := range g.Edges {
-		unvisited = append(unvisited, node)
-	}
-
-	for len(unvisited) > 0 {
-		// Find node with minimum distance
-		minDist := math.MaxInt32
-		var minNode string
-		for _, node := range unvisited {
-			if dist[node] < minDist {
-				minDist = dist[node]
-				minNode = node
-			}
-		}
-
-		if minNode == goal {
-			break
-		}
-
-		// Remove minNode from unvisited
-		for i, node := range unvisited {
-			if node == minNode {
-				unvisited = append(unvisited[:i], unvisited[i+1:]...)
-				break
-			}
-		}
-
-		for neighbor, weight := range g.Edges[minNode] {
-			alt := dist[minNode] + weight
-			if alt < dist[neighbor] {
-				dist[neighbor] = alt
-				prev[neighbor] = minNode
-			}
-		}
-	}
-
-	// Construct the path
-	var path []string
-	for u := goal; u != ""; u = prev[u] {
-		path = append([]string{u}, path...)
-	}
-	return path, dist[goal]
 }

@@ -10,6 +10,7 @@ go_library(
         "revocations.go",
         "scmp.go",
         "selector.go",
+        "dijkstra.go",
     ],
     importpath = "github.com/scionproto/scion/go/pkg/gateway/pathhealth",
     visibility = ["//visibility:public"],
