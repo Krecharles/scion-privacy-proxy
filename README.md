@@ -14,6 +14,101 @@ also developed at the smae group, the code can be found
 on top of [SCION](http://www.scion-architecture.net) (Scalability, Control and Isolation On
 next-generation Networks).
 
+## Setup Instructions
+This guide gives instructions to create the development setup I used to build this version of the
+proxy. It assembles instructions from the [SCIONLab Tutorials
+Page](https://docs.scionlab.org/content/apps/remote_sig.html) and the official [Running SCION
+Locally](https://scion.docs.anapaya.net/en/latest/dev/run.html) tutorial. If something is not
+working, consult these sources to check whether they might have changed. 
+
+This setup consists of two VMs that are connected to different Endpoints through the SCIONLab
+infrastructure. One is the “main” VM (VM A) in which code is developed and compiled. The other (VM
+B) receives the compiled binary from VM A and runs it.
+
+
+### Create SCIONLab VMs
+
+Go to [SCIONLab](https://www.scionlab.org) and create an account if you do not have one. Go to
+manage VMs and add a new one to create VM A. Select “Run SCION in a *Vagrant* virtual machine”. For
+attachment point, I used 17-ffaa:0:1107 (ETHZ-AP). You can leave the other options as they are. Then
+download the configuration. Repeat this for VM B. I used 19-ffaa:0:1303 (Magdeburg AP).
+
+### Run using prebuilt binaries
+
+Execute the commands below to setup the proxy in both VMs. The commands differ in the SCION
+addresses, IP addresses and respective  configuration files.
+
+``` bash
+# Setup instructions for VM A
+
+$ vagrant up
+$ vagrant ssh
+$ sudo systemctl start scionlab.target
+
+# From here on out, you should have a SCION connection between the VMs. Execute the above commands on the other VM an run the following command to check connectivity. You might need to wait a minute for it to fully configure.
+$ scion showpaths 19-ffaa:0:1303
+
+# download the necessary files for the scproxy
+$ wget https://github.com/Krecharles/scion-privacy-proxy/releases/download/v0.1/scproxy
+$ wget https://raw.githubusercontent.com/Krecharles/scion-privacy-proxy/scionlab/scproxy/setupA/sig.json
+$ wget https://raw.githubusercontent.com/Krecharles/scion-privacy-proxy/scionlab/scproxy/setupA/sig.toml
+
+$ chmod +x scproxy # Make downloaded binary executable
+$ sudo ip address add 172.16.11.1 dev lo # Setup tunnel
+$ sudo ./scproxy --config sig.toml # Run the Proxy
+```
+
+``` bash
+# Setup instructions for VM B
+
+$ vagrant up
+$ vagrant ssh
+$ sudo systemctl start scionlab.target
+
+# From here on out, you should have connection a SCION connection between the VMs. Execute the above commands on the other VM an run the following command to check connectivity. You might need to wait a minute for it to fully configure.
+$ scion showpaths 17-ffaa:0:1107
+
+# download the necessary files for the scproxy
+$ wget https://github.com/Krecharles/scion-privacy-proxy/releases/download/v0.1/scproxy
+$ wget https://raw.githubusercontent.com/Krecharles/scion-privacy-proxy/scionlab/scproxy/setupB/sig.json
+$ wget https://raw.githubusercontent.com/Krecharles/scion-privacy-proxy/scionlab/scproxy/setupB/sig.toml
+
+$ chmod +x scproxy # Make downloaded binary executable
+$ sudo ip address add 172.16.12.1 dev lo # Setup tunnel
+$ sudo ./scproxy --config sig.toml # Run the Proxy
+```
+
+Congratulations! You now configured the two VMs for extra secure communication using the proxy!
+
+You can test the setup with the networking app of your choice. Below are instructions to setup a
+python server.
+
+### Test proxy using a python server
+To run the proy in the background, you can use the command below. Alternatively you can connect
+another terminal session to your VM.
+``` bash
+$ sudo ./scproxy --config sig.toml >proxy_output.txt 2>&1 &
+```
+To stop the proxy if it is run in the background, find out it's PID and kill it as follows.
+``` bash
+$ px aux | grep scproxy # get the PID
+$ kill <PID>
+```
+Now that both VMs have the proxy running in the background, create a python server in VM A:
+``` bash
+# VM A
+$ echo "Hello SCION world! I was served using extra secure multipath based routing" > helloworld.txt
+$ python3 -m http.server --bind 172.16.11.1
+```
+
+Query the server in VM B: 
+``` bash
+# VM B
+$ curl 172.16.11.1/scionpoem.txt
+```
+
+### Compile from sources
+TODO
 
 ## Acknowledgements
 This project makes use of [hashicorp's implementation of Shamir's secret sharing
