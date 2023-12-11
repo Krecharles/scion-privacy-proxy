@@ -1,0 +1,14 @@
+[gateway]
+traffic_policy_file = "./scproxy/setupA/sig.json"
+
+[metrics]
+prometheus = "127.0.0.1:30456"
+
+[log.console]
+level = "info"
+
+[tunnel]
+src_ipv4 = "172.16.11.1"  # on host A, 172.16.12.1 on host B
+
+number_of_paths_n = 3
+number_of_paths_t = 2
