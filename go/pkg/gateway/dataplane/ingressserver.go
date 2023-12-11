@@ -28,7 +28,6 @@ import (
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/sock/reliable"
 	"github.com/scionproto/scion/go/pkg/gateway/control"
-	"github.com/scionproto/scion/go/pkg/gateway/pathhealth"
 )
 
 const (
@@ -70,7 +69,8 @@ type IngressServer struct {
 	DeviceManager control.DeviceManager
 	Metrics       IngressMetrics
 
-	workers map[string]*worker
+	workers        map[string]*worker
+	NumberOfPathsT int
 }
 
 func (d *IngressServer) Run(ctx context.Context) error {
@@ -150,7 +150,7 @@ func (d *IngressServer) dispatch(ctx context.Context, frame *frameBuf, src *snet
 		// Handle will be cleaned up when worker goroutine finishes.
 
 		// TODO decide more smartly how to handle numpaths
-		worker = newWorker(src, frame.sessId, pathhealth.NumberOfPathsT, handle, metrics)
+		worker = newWorker(src, frame.sessId, d.NumberOfPathsT, handle, metrics)
 		d.workers[dispatchStr] = worker
 		go func() {
 			defer log.HandlePanic()
