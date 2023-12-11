@@ -88,7 +88,7 @@ func TestThreePathsEmptyPayload(t *testing.T) {
 	// immediately, but only when waitFrames is called.
 	frameChan := make(chan ([]byte))
 
-	sess := createSession(t, ctrl, frameChan, 3, 2)
+	sess := createSession(t, ctrl, frameChan, 2, 3)
 
 	sess.SetPaths([]snet.Path{
 		createMockPath(ctrl, 600),
