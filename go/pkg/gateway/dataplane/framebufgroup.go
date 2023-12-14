@@ -76,6 +76,9 @@ func (fbg *frameBufGroup) TryAndCombine() bool {
 	}
 	output, err := Combine(shares)
 	if err != nil {
+		for i := 0; i < len(shares); i++ {
+			fmt.Println("Share", i+1, "length:", len(shares[i]), "seq", fbg.groupSeqNr)
+		}
 		fmt.Println("----[Error]: Error combining shares:", err)
 		return false
 	}
@@ -87,10 +90,11 @@ func (fbg *frameBufGroup) TryAndCombine() bool {
 	copy(fbg.combined.raw[:hdrLen], firstFrame.raw[:hdrLen])
 	copy(fbg.combined.raw[hdrLen:], []byte(output))
 	fbg.combined.frameLen = len(output) + hdrLen
-	fbg.combined.raw = fbg.combined.raw[:fbg.combined.frameLen]
 	fbg.combined.fragNProcessed = fbg.combined.index == 0
 	fbg.combined.completePktsProcessed = fbg.combined.index == 0xffff
 
 	fbg.isCombined = true
+	fbg.Release()
+
 	return true
 }

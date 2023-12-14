@@ -16,7 +16,6 @@ package dataplane
 
 import (
 	"encoding/binary"
-	"fmt"
 	"time"
 )
 
@@ -88,51 +87,6 @@ func (e *encoder) Close() {
 // Write sends a packet to the encoder.
 func (e *encoder) Write(pkt []byte) {
 	e.ring.Write(pkt, false)
-}
-
-// Reads a group of SIG frames from the encoder where each frame consists of a stream of shares.
-// The function blocks if there are no frames available.
-// When the encoder is closed, the function returns nil.
-func (e *encoder) Read(N int, T int, mtu int) [][]byte {
-	// fmt.Println("----[Debug]: encoder.Read()")
-
-	if T > N || N > 255 || T < 1 || N < 1 {
-		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
-		panic("Invalid N or T")
-	}
-
-	// Get the SIG frame, then apply SSS to the content.
-	// Be sure to leave one byte empty because SSS expands into that
-	unencryptedFrame := e.ReadRegularSIGFrame(mtu)
-
-	if unencryptedFrame == nil || len(unencryptedFrame) <= 16 {
-		// the frame is nil or the frame is just the header.
-		// Or sender was closed and all the buffered frames were sent.
-		// fmt.Println("----[Debug]: encoder.Read(), unencryptedFrame is nil or len(unencryptedFrame) <= 16")
-		return nil
-	}
-
-	shares, err := Split(unencryptedFrame[hdrLen:], N, T)
-	if err != nil {
-		fmt.Println(unencryptedFrame, len(unencryptedFrame))
-		fmt.Println("----[Error]: Error splitting frame")
-		fmt.Printf("N=%d, T=%d\n", N, T)
-		panic(err)
-	}
-
-	encryptedFrames := make([][]byte, N)
-	for i := 0; i < N; i++ {
-		encryptedFrames[i] = make([]byte, hdrLen+len(shares[i]))
-		// copy over the header from the unencrypted frame
-		copy(encryptedFrames[i], unencryptedFrame[:hdrLen])
-		// update the last byte of the sequence number to be the path ID
-		encryptedFrames[i][seqPos+7] = byte(i)
-		// copy over the share
-		copy(encryptedFrames[i][hdrLen:], shares[i])
-	}
-
-	return encryptedFrames
-
 }
 
 // Reads a SIG frame from the encoder.

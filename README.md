@@ -91,7 +91,7 @@ $ sudo ./scproxy --config sig.toml >proxy_output.txt 2>&1 &
 ```
 To stop the proxy if it is run in the background, find out it's PID and kill it as follows.
 ``` bash
-$ px aux | grep scproxy # get the PID
+$ ps aux | grep scproxy # get the PID
 $ kill <PID>
 ```
 Now that both VMs have the proxy running in the background, create a python server in VM A:
@@ -104,7 +104,7 @@ $ python3 -m http.server --bind 172.16.11.1
 Query the server in VM B: 
 ``` bash
 # VM B
-$ curl 172.16.11.1/scionpoem.txt
+$ curl 172.16.11.1:8000/helloworld.txt
 ```
 
 ### Compile from sources

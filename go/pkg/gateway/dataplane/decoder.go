@@ -14,7 +14,7 @@ func newDecoder(requiredSharesForDecode int) *decoder {
 
 func (d *decoder) Insert(frame *frameBuf) *frameBuf {
 	groupSeqNr := uint64(frame.seqNr >> 8)
-	// fmt.Println("----[Debug]: Inserting new frame seq=", frame.seqNr, "groupSeqNr=", groupSeqNr)
+	// fmt.Println("----[Debug]: Inserting new frame seq=", frame.seqNr, "groupSeqNr=", groupSeqNr, "len=", frame.frameLen)
 	// check if groupSeqNr contained in d.fbgs
 
 	fbg, ok := d.fbgs[groupSeqNr]

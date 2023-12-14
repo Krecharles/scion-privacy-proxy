@@ -148,7 +148,7 @@ func (fb *frameBuf) ProcessCompletePkts(ctx context.Context) {
 			break
 		}
 		// We got everything for the packet. Write it out to the wire.
-		// fmt.Println("----[Debug]: Writing packet to wire via framebuf. ", "len", pktLen, "offset", offset, "frameLen", fb.frameLen)
+		// fmt.Println("----[Debug]: Writing packet to wire via framebuf. seq:", fb.seqNr, "len", pktLen, "offset", offset, "frameLen", fb.frameLen)
 		if err := fb.snd.send(rawPkt[:pktLen]); err != nil {
 			logger.Error("Unable to send packet", "err", err)
 		}

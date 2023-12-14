@@ -136,6 +136,7 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// fmt.Println("----[DEBUG]: Session.SetPaths() ---- Setting paths")
 	created := make([]*sender, 0, len(paths))
 	reused := make(map[*sender]bool, len(s.senders))
 	for _, existingSender := range s.senders {
@@ -225,8 +226,8 @@ func (s *Session) run() {
 			// only read packets when at least 2 paths are needed to decrypt the message
 			// -fmt.Println("session.run(), Waiting for more paths (T < 2)")
 
-			if time.Since(startTime) > time.Second*3 {
-				fmt.Println("----[ERROR]: 3 seconds have passed and still not enough paths.")
+			if time.Since(startTime) > time.Second*5 {
+				fmt.Println("----[ERROR]: 5 seconds have passed and still not enough paths.")
 				panic("not enough paths")
 			}
 		}
@@ -254,7 +255,7 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if T > N || N > 255 || T < 1 || N < 1 || len(s.senders) < N {
-		fmt.Printf("Invalid N or T. N=%d, T=%d\n", N, T)
+		fmt.Printf("Invalid N or T. N=%d, T=%d, s.senders=%d\n", N, T, len(s.senders))
 		panic("Invalid N or T")
 	}
 
@@ -274,7 +275,7 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		copy(encryptedFrames[i][hdrLen:], shares[i])
 	}
 
-	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders))
+	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
 	for pathID, sender := range s.senders {
 		sender.Write(encryptedFrames[pathID])
 	}

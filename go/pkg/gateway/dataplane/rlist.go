@@ -81,7 +81,6 @@ func (l *reassemblyList) Insert(ctx context.Context, frame *frameBuf) {
 	if frame.seqNr < firstFrame.seqNr {
 		logger.Debug("----[Debug]: Received frame that is too old.", "seqNr", frame.seqNr)
 		increaseCounterMetric(l.tooOld, 1)
-		frame.Release()
 		return
 	}
 	last := l.entries.Back()
@@ -91,7 +90,6 @@ func (l *reassemblyList) Insert(ctx context.Context, frame *frameBuf) {
 		logger.Debug("Received duplicate frame.", "epoch", l.epoch, "seqNr", frame.seqNr,
 			"currentOldest", firstFrame.seqNr, "currentNewest", lastFrame.seqNr)
 		increaseCounterMetric(l.duplicate, 1)
-		frame.Release()
 		return
 	}
 	// If there is a gap between this frame and the last in the reassembly list,
@@ -124,13 +122,11 @@ func (l *reassemblyList) insertFirst(ctx context.Context, frame *frameBuf) {
 	if frame.frag0Start != 0 {
 		l.entries.PushBack(frame)
 	} else {
-		frame.Release()
 	}
 }
 
 // tryReassemble checks if a packet can be reassembled from the reassembly list.
 func (l *reassemblyList) tryReassemble(ctx context.Context) {
-	// fmt.Println("----[Debug]: tryReassemble")
 	logger := log.FromCtx(ctx)
 	if l.entries.Len() < 2 {
 		return
@@ -205,7 +201,7 @@ func (l *reassemblyList) collectAndWrite(ctx context.Context) {
 			"expected", pktLen, "have", l.buf.Len())
 	} else {
 		// Write the packet to the wire.
-		// fmt.Println("----[Debug]:  Writing packet to wire via rlist")
+		// fmt.Println("----[Debug]:  Writing packet to wire via rlist", frame.seqNr)
 		if err := l.snd.send(l.buf.Bytes()); err != nil {
 			logger.Error("Unable to send reassembled packet", "err", err)
 		}
@@ -217,8 +213,6 @@ func (l *reassemblyList) collectAndWrite(ctx context.Context) {
 }
 
 func (l *reassemblyList) removeEntry(e *list.Element) {
-	frame := e.Value.(*frameBuf)
-	frame.Release()
 	l.entries.Remove(e)
 }
 
