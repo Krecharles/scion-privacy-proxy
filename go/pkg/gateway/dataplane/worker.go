@@ -54,7 +54,7 @@ type worker struct {
 }
 
 func newWorker(remote *snet.UDPAddr, sessID uint8, numberOfPathsT int,
-	tunIO io.WriteCloser, metrics IngressMetrics) *worker {
+	tunIO io.WriteCloser, metrics IngressMetrics, aesKey string) *worker {
 
 	worker := &worker{
 		Remote:  remote,
@@ -63,7 +63,7 @@ func newWorker(remote *snet.UDPAddr, sessID uint8, numberOfPathsT int,
 		rlists:  make(map[int]*reassemblyList),
 		tunIO:   tunIO,
 		Metrics: metrics,
-		decoder: *newDecoder(numberOfPathsT),
+		decoder: *newDecoder(numberOfPathsT, aesKey),
 	}
 
 	return worker
@@ -103,6 +103,8 @@ func (w *worker) Run(ctx context.Context) {
 // packets to the wire and then adding the frame to the corresponding reassembly
 // list if needed.
 func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
+
+	fmt.Println("----[Debug]: worker.processFrame() Processing frame", frame.seqNr, "len", frame.frameLen, "index", frame.index)
 	index := int(binary.BigEndian.Uint16(frame.raw[2:4]))
 	epoch := int(binary.BigEndian.Uint32(frame.raw[4:8]) & 0xfffff)
 	seqNr := binary.BigEndian.Uint64(frame.raw[8:16])
@@ -123,7 +125,7 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 		return
 	}
 
-	// fmt.Println("----[Debug]: ---- Decoded Frame", decodedFrame.seqNr, "len", decodedFrame.frameLen, "index", decodedFrame.index)
+	fmt.Println("----[Debug]: worker.processFrame() Decoded Frame", decodedFrame.seqNr, "len", decodedFrame.frameLen, "index", decodedFrame.index)
 	// Add to frame buf reassembly list.
 	rlist := w.getRlist(epoch)
 	rlist.Insert(ctx, decodedFrame)

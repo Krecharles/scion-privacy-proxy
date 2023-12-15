@@ -86,6 +86,7 @@ type Tunnel struct {
 	SrcIPv6        net.IP `toml:"src_ipv6,omitempty"`
 	NumberOfPathsT int    `toml:"number_of_paths_t,omitempty"`
 	NumberOfPathsN int    `toml:"number_of_paths_n,omitempty"`
+	AESKey         string `toml:"aes_key,omitempty"`
 }
 
 func (cfg *Tunnel) Validate() error {

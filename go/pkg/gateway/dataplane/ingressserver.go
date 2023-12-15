@@ -71,6 +71,7 @@ type IngressServer struct {
 
 	workers        map[string]*worker
 	NumberOfPathsT int
+	AESKey         string
 }
 
 func (d *IngressServer) Run(ctx context.Context) error {
@@ -150,7 +151,7 @@ func (d *IngressServer) dispatch(ctx context.Context, frame *frameBuf, src *snet
 		// Handle will be cleaned up when worker goroutine finishes.
 
 		// TODO decide more smartly how to handle numpaths
-		worker = newWorker(src, frame.sessId, d.NumberOfPathsT, handle, metrics)
+		worker = newWorker(src, frame.sessId, d.NumberOfPathsT, handle, metrics, d.AESKey)
 		d.workers[dispatchStr] = worker
 		go func() {
 			defer log.HandlePanic()

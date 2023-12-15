@@ -16,6 +16,7 @@ package dataplane
 
 import (
 	"encoding/binary"
+	"math"
 	"time"
 )
 
@@ -63,17 +64,23 @@ type encoder struct {
 	// frame is the frame being built at the moment.
 	// To avoid allocations, we reuse the same frame buffer over and over again.
 	frame []byte
+
+	// the maximum number of bytes that can be read from packets such that the resulting encrypted
+	// frame is still below the MTU
+	maxMessageLength int
+	aesKey           string
 }
 
 // newEncoder creates a new encoder instance.
 // mtu is max size of the frame, excluding SCION header, but including SIG header.
-func newEncoder(sessionID uint8, streamID uint32) *encoder {
+func newEncoder(sessionID uint8, streamID uint32, aesKey string) *encoder {
 	e := &encoder{
 		sessionID: sessionID,
 		streamID:  streamID,
 		seq:       0,
 		ring:      newPktRing(),
-		frame:     make([]byte, 0), // MTU - 1 because the SSS takes up one tag bit for reconstruction
+		frame:     make([]byte, 0),
+		aesKey:    aesKey,
 	}
 	return e
 }
@@ -89,11 +96,18 @@ func (e *encoder) Write(pkt []byte) {
 	e.ring.Write(pkt, false)
 }
 
-// Reads a SIG frame from the encoder.
-// The function blocks if there are no frames available.
-// When the encoder is closed, the function returns nil.
-func (e *encoder) ReadRegularSIGFrame(mtu int) []byte {
-	e.frame = make([]byte, 0, mtu-1) // -1 because the secret sharing scheme takes up one tag byte for reconstruction
+func calculateMaxMessageLengthForMTU(mtu int) int {
+	if mtu < 40 {
+		return 0
+	}
+	return 3*(int(math.Floor(float64(mtu-40)/4.0))) + 2
+}
+
+func (e *encoder) ReadEncryptedSIGFrame(mtu int) []byte {
+
+	e.maxMessageLength = calculateMaxMessageLengthForMTU(mtu - 1) // -1 because the secret sharing scheme takes up one tag byte for reconstruction
+
+	e.frame = make([]byte, 0, mtu-1)
 	e.frame = e.frame[:hdrLen]
 	// Write the header.
 	e.frame[versionPos] = 0
@@ -104,6 +118,29 @@ func (e *encoder) ReadRegularSIGFrame(mtu int) []byte {
 
 	// Increase the sequence number of the group
 	e.seq += 256
+	frame := e.ReadRegularSIGFrame()
+
+	if frame == nil {
+		return nil
+	}
+
+	// encrypt the frame
+	encryptedFrame, err := Encrypt(frame[hdrLen:], e.aesKey)
+	if err != nil {
+		panic(err)
+	}
+
+	frame = frame[:hdrLen+len(encryptedFrame)]
+	copy(frame[hdrLen:], encryptedFrame)
+	return frame
+}
+
+// Reads a SIG frame from the encoder.
+// The function blocks if there are no frames available.
+// When the encoder is closed, the function returns nil.
+// Fills up e.frame with e.maxMessageLength bytes
+func (e *encoder) ReadRegularSIGFrame() []byte {
+
 	// First, use the data remaining from the last packet, if any.
 	var pos int = hdrLen
 	if len(e.pkt) > 0 {
@@ -118,7 +155,7 @@ func (e *encoder) ReadRegularSIGFrame(mtu int) []byte {
 	for {
 		// Check whether one more packet would fit into the frame.
 		// At least 40B are needed to fit IPv6 header into it.
-		if cap(e.frame)-pos < 40 {
+		if e.maxMessageLength-pos < 40 {
 			return e.frame[:pos]
 		}
 
@@ -192,7 +229,7 @@ func (e *encoder) ReadRegularSIGFrame(mtu int) []byte {
 // copyToFrame copies as much data as possible from the currently processed packet
 // to the current frame. Returns number of bytes copied.
 func (e *encoder) copyToFrame() int {
-	toCopy := cap(e.frame) - len(e.frame)
+	toCopy := e.maxMessageLength - len(e.frame)
 	if len(e.pkt) < toCopy {
 		toCopy = len(e.pkt)
 	}

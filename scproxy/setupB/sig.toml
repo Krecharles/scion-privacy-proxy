@@ -11,3 +11,4 @@ level = "info"
 src_ipv4 = "172.16.12.1"  # 172.16.11.1 on host A
 number_of_paths_n = 3
 number_of_paths_t = 2
+aes_key = "157cf3aa823cfc5ab5bada84fdd3c31ef7b2a7be710f999e48a6037d427c5d6b"

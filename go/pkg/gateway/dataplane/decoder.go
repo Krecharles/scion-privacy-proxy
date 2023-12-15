@@ -1,14 +1,20 @@
 package dataplane
 
+import (
+	"fmt"
+)
+
 type decoder struct {
 	requiredSharesForDecode int
 	fbgs                    map[uint64]*frameBufGroup
+	aesKey                  string
 }
 
-func newDecoder(requiredSharesForDecode int) *decoder {
+func newDecoder(requiredSharesForDecode int, aesKey string) *decoder {
 	return &decoder{
 		requiredSharesForDecode: requiredSharesForDecode,
 		fbgs:                    make(map[uint64]*frameBufGroup),
+		aesKey:                  aesKey,
 	}
 }
 
@@ -37,6 +43,13 @@ func (d *decoder) Insert(frame *frameBuf) *frameBuf {
 		// Combination was successful, we can delete the group and return the combined frame
 		// delete(d.fbgs, groupSeqNr)
 		// fmt.Println("----[Debug]: Combined frame. frame seq=", fbg.combined.seqNr, "groupSeqNr=", groupSeqNr)
+		temp := fbg.combined.raw[hdrLen:fbg.combined.frameLen]
+		decryptedFrame, err := Decrypt(temp, d.aesKey)
+		if err != nil {
+			fmt.Println("----[ERROR]: Failed to decrypt frame. err=", err)
+		}
+		n := copy(fbg.combined.raw[hdrLen:], decryptedFrame)
+		fbg.combined.frameLen = hdrLen + n
 		return fbg.combined
 	}
 	return nil

@@ -121,8 +121,8 @@ func (l *reassemblyList) insertFirst(ctx context.Context, frame *frameBuf) {
 	frame.ProcessCompletePkts(ctx)
 	if frame.frag0Start != 0 {
 		l.entries.PushBack(frame)
-	} else {
 	}
+
 }
 
 // tryReassemble checks if a packet can be reassembled from the reassembly list.

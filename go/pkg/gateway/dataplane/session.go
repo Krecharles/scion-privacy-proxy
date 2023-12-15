@@ -15,6 +15,7 @@
 package dataplane
 
 import (
+	"encoding/binary"
 	"fmt"
 	"hash/crc64"
 	"net"
@@ -74,7 +75,7 @@ type Session struct {
 
 func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 	dataPlaneConn net.PacketConn, pathStatsPublisher PathStatsPublisher,
-	metrics SessionMetrics, numberOfPathsT int, numberOfPathsN int) *Session {
+	metrics SessionMetrics, numberOfPathsT int, numberOfPathsN int, aesKey string) *Session {
 	sess := &Session{
 		SessionID:          sessionId,
 		GatewayAddr:        gatewayAddr,
@@ -83,7 +84,7 @@ func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 		Metrics:            metrics,
 		numberOfPathsT:     numberOfPathsT,
 		numberOfPathsN:     numberOfPathsN,
-		encoder:            newEncoder(sessionId, NewStreamID()),
+		encoder:            newEncoder(sessionId, NewStreamID(), aesKey),
 	}
 	go func() {
 		defer log.HandlePanic()
@@ -234,10 +235,9 @@ func (s *Session) run() {
 
 		// Get the SIG frame, then apply SSS to the content.
 		// Be sure to leave one byte empty because SSS expands into that
-		unencryptedFrame := s.encoder.ReadRegularSIGFrame(s.mtu) // TODO problem, mtu might change
+		unencryptedFrame := s.encoder.ReadEncryptedSIGFrame(s.mtu) // TODO problem, mtu might change
 		if unencryptedFrame == nil {
 			// sender was closed and all the buffered frames were sent.
-			// fmt.Println("----[Debug]: encoder.Read(), unencryptedFrame is nil or len(unencryptedFrame) <= 16")
 			break
 		}
 
@@ -275,7 +275,7 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		copy(encryptedFrames[i][hdrLen:], shares[i])
 	}
 
-	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
+	fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
 	for pathID, sender := range s.senders {
 		sender.Write(encryptedFrames[pathID])
 	}

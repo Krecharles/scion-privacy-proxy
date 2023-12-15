@@ -70,6 +70,7 @@ type DataplaneSessionFactory struct {
 	Metrics            dataplane.SessionMetrics
 	NumberOfPathsN     int
 	NumberOfPathsT     int
+	AESKey             string
 }
 
 func (dpf DataplaneSessionFactory) New(id uint8, policyID int,
@@ -95,6 +96,7 @@ func (dpf DataplaneSessionFactory) New(id uint8, policyID int,
 		metrics,
 		dpf.NumberOfPathsT,
 		dpf.NumberOfPathsN,
+		dpf.AESKey,
 	)
 	return sess
 }
@@ -238,6 +240,7 @@ type Gateway struct {
 
 	NumberOfPathsN int
 	NumberOfPathsT int
+	AESKey         string
 }
 
 func (g *Gateway) Run(ctx context.Context) error {
@@ -630,7 +633,7 @@ func (g *Gateway) Run(ctx context.Context) error {
 
 	// Start dataplane ingress
 	if err := StartIngress(ctx, scionNetwork, g.DataServerAddr, deviceManager,
-		g.Metrics, g.NumberOfPathsT); err != nil {
+		g.Metrics, g.NumberOfPathsT, g.AESKey); err != nil {
 
 		return err
 	}
@@ -683,6 +686,7 @@ func (g *Gateway) Run(ctx context.Context) error {
 				Metrics:        CreateSessionMetrics(g.Metrics),
 				NumberOfPathsN: g.NumberOfPathsN,
 				NumberOfPathsT: g.NumberOfPathsT,
+				AESKey:         g.AESKey,
 			},
 			Metrics: CreateEngineMetrics(g.Metrics),
 		},
@@ -803,7 +807,7 @@ func CreateIngressMetrics(m *Metrics) dataplane.IngressMetrics {
 }
 
 func StartIngress(ctx context.Context, scionNetwork *snet.SCIONNetwork, dataAddr *net.UDPAddr,
-	deviceManager control.DeviceManager, metrics *Metrics, numberOfPathsT int) error {
+	deviceManager control.DeviceManager, metrics *Metrics, numberOfPathsT int, aesKey string) error {
 
 	logger := log.FromCtx(ctx)
 	dataplaneServerConn, err := scionNetwork.Listen(
@@ -821,6 +825,7 @@ func StartIngress(ctx context.Context, scionNetwork *snet.SCIONNetwork, dataAddr
 		DeviceManager:  deviceManager,
 		Metrics:        ingressMetrics,
 		NumberOfPathsT: numberOfPathsT,
+		AESKey:         aesKey,
 	}
 	go func() {
 		defer log.HandlePanic()

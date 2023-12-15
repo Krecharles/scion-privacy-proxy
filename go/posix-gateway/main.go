@@ -152,6 +152,7 @@ func realMain(ctx context.Context) error {
 		Metrics:                  gateway.NewMetrics(localIA),
 		NumberOfPathsN:           globalCfg.Tunnel.NumberOfPathsN,
 		NumberOfPathsT:           globalCfg.Tunnel.NumberOfPathsT,
+		AESKey:                   globalCfg.Tunnel.AESKey,
 	}
 
 	g.Go(func() error {

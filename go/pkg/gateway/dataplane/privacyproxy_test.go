@@ -18,6 +18,17 @@ import (
 	"github.com/scionproto/scion/go/lib/xtest"
 )
 
+func TestEncryptionAndDecryption(t *testing.T) {
+	message := []byte("Hello World!")
+	encryptedMessage, err := Encrypt(message, testAESKey)
+	assert.Nil(t, err)
+
+	decryptedMessage, err := Decrypt(encryptedMessage, testAESKey)
+	assert.Nil(t, err)
+
+	assert.Equal(t, message, decryptedMessage)
+}
+
 func TestThreePathsEncryptionWithRandomData(t *testing.T) {
 	fmt.Println("[Running Test]: privacyproxy_test.go->TestThreePathsEncryptionWithRandomData")
 	ctrl := gomock.NewController(t)
@@ -41,7 +52,7 @@ func TestThreePathsEncryptionWithRandomData(t *testing.T) {
 	}
 
 	mt := &MockTun{}
-	w := newWorker(addr, 1, 2, mt, IngressMetrics{})
+	w := newWorker(addr, 1, 2, mt, IngressMetrics{}, testAESKey)
 
 	// create a list of randomly generated gopackets and send them
 	packets := make([]gopacket.Packet, numPackets)
@@ -82,7 +93,7 @@ func TestChangingPaths(t *testing.T) {
 	}
 
 	mt := &MockTun{}
-	w := newWorker(addr, 1, 2, mt, IngressMetrics{})
+	w := newWorker(addr, 1, 2, mt, IngressMetrics{}, testAESKey)
 
 	// create a list of randomly generated gopackets and send them
 	packets := make([]gopacket.Packet, 2*numPackets)
@@ -92,20 +103,16 @@ func TestChangingPaths(t *testing.T) {
 	}
 
 	waitFramesProxyTest(t, frameChan, w)
-	fmt.Println("Setting paths")
 	sess.SetPaths([]snet.Path{
 		createMockPath(ctrl, 500),
 		createMockPath(ctrl, 10001),
 		createMockPath(ctrl, 8002),
 	})
-	fmt.Println("done Setting paths")
 	for i := 0; i < numPackets; i++ {
 		packets[i+numPackets] = generateRandomPayloadPacket(random, 200)
 		sess.Write(packets[i])
 	}
-	fmt.Println("----[Debug]: waiting for frames")
 	waitFramesProxyTest(t, frameChan, w)
-	fmt.Println("----[Debug]: received frames")
 	assert.Equal(t, numPackets*2, len(mt.packets))
 	for i := 0; i < numPackets; i++ {
 		assert.Equal(t, packets[i].Data(), mt.packets[i])
@@ -180,12 +187,12 @@ func createMockSession(ctrl *gomock.Controller, frameChan chan []byte) *Session 
 			return 0, nil
 		}).AnyTimes()
 
-	sess := NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, 2, 3)
+	sess := NewSession(22, net.UDPAddr{}, conn, nil, SessionMetrics{}, 2, 3, testAESKey)
 
 	sess.SetPaths([]snet.Path{
-		createMockPath(ctrl, 100),
-		createMockPath(ctrl, 101),
-		createMockPath(ctrl, 102),
+		createMockPath(ctrl, 300),
+		createMockPath(ctrl, 301),
+		createMockPath(ctrl, 302),
 	})
 	return sess
 }
