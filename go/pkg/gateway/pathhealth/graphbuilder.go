@@ -149,7 +149,10 @@ func BuildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 	prevGivenPaths = pathsEdgeReprs
 	prevSelectedPaths = returnOriginalPaths
 
-	fmt.Println("----[DEBUG]: Selected paths with probability of compromise", CalcProbabilityOfCompromiseConst(selectedPaths))
+	fmt.Println("----[DEBUG]: Selected paths with score", CalcProbabilityOfCompromiseConst(selectedPaths))
+	// for _, p := range selectedPaths {
+	// 	fmt.Println("----[DEBUG]: Selected path:", pathEdgesToString(p))
+	// }
 
 	return returnOriginalPaths
 }
@@ -185,13 +188,20 @@ func isSamePathSet(paths1, paths2 [][]Edge) bool {
 }
 
 // Converts an snet path to a list of edges (source, interface, target) for easier processing
+// snet.Path are a list of ASes and interfaces, e.g. [("AS1, IF7"), ("AS2, IF11"), ("AS2, IF3"),
+// ("AS3, IF1")]. The generated list of edges splits a node into an in-node and an out-node to also
+// address node-disjointness in path selection. Innodes are represented by appending a "_in" to the
+// end of the AS string, whereas outnodes are represented by appending "_out". Output for above
+// example: [("AS1_out, "7>11", "AS2_in"), ("AS2_in", "edgesplit", "AS2_out"), ("AS2_out", "3>1"
+// "AS3_in")]
 func pathToEdgeRepresentation(path snet.Path) []Edge {
 	var pathEdges []Edge
 	for i := 0; i < len(path.Metadata().Interfaces); i += 2 {
 		hop := path.Metadata().Interfaces[i]
 		nextHop := path.Metadata().Interfaces[i+1]
 		iface := hop.ID.String() + ">" + nextHop.ID.String()
-		pathEdges = append(pathEdges, NewEdge(hop.IA.String(), iface, nextHop.IA.String()))
+		pathEdges = append(pathEdges, NewEdge(hop.IA.String()+"_out", iface, nextHop.IA.String()+"_in"))
+		pathEdges = append(pathEdges, NewEdge(nextHop.IA.String()+"_in", "edgesplit", nextHop.IA.String()+"_out"))
 	}
 	return pathEdges
 }
