@@ -10,7 +10,7 @@ go_library(
         "revocations.go",
         "scmp.go",
         "selector.go",
-        "dijkstra.go",
+        "graphbuilder.go",
     ],
     importpath = "github.com/scionproto/scion/go/pkg/gateway/pathhealth",
     visibility = ["//visibility:public"],
@@ -29,7 +29,7 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    srcs = ["revocations_test.go"],
+    srcs = ["revocations_test.go", "graphbuilder_test.go"],
     deps = [
         ":go_default_library",
         "//go/lib/addr:go_default_library",
