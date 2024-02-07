@@ -60,9 +60,9 @@ func (mt *MockTun) AssertDone(t *testing.T) {
 
 func SendFrame(t *testing.T, w *worker, data []byte) {
 	frames := make(ringbuf.EntryList, 1)
-	n := newFrameBufs(frames)
+	n := newEncryptedFrameBufs(frames)
 	assert.Equal(t, 1, n)
-	f := frames[0].(*frameBuf)
+	f := frames[0].(*encryptedFrameBuf)
 	copy(f.raw, data)
 	f.frameLen = len(data)
 	w.processFrame(context.Background(), f)

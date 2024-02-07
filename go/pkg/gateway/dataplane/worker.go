@@ -87,7 +87,7 @@ func (w *worker) Run(ctx context.Context) {
 			break
 		}
 		for i := 0; i < n; i++ {
-			frame := frames[i].(*frameBuf)
+			frame := frames[i].(*encryptedFrameBuf)
 			w.processFrame(ctx, frame)
 			frames[i] = nil
 		}
@@ -102,21 +102,12 @@ func (w *worker) Run(ctx context.Context) {
 // processFrame processes a SIG frame by first writing all completely contained
 // packets to the wire and then adding the frame to the corresponding reassembly
 // list if needed.
-func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
+func (w *worker) processFrame(ctx context.Context, frame *encryptedFrameBuf) {
 
-	fmt.Println("----[Debug]: worker.processFrame() Processing frame", frame.seqNr, "len", frame.frameLen, "index", frame.index)
-	index := int(binary.BigEndian.Uint16(frame.raw[2:4]))
+	// fmt.Println("----[Debug]: worker.processFrame() Processing frame", frame.seqNr, "len", frame.frameLen, "index", frame.index)
 	epoch := int(binary.BigEndian.Uint32(frame.raw[4:8]) & 0xfffff)
 	seqNr := binary.BigEndian.Uint64(frame.raw[8:16])
 	frame.seqNr = seqNr
-	frame.index = index
-	frame.snd = w
-	// If index == 0 then we can be sure that there is no fragment at the beginning
-	// of the frame.
-	frame.fragNProcessed = index == 0
-	// If index == 0xffff then we can be sure that there are no complete packets in this
-	// frame.
-	frame.completePktsProcessed = index == 0xffff
 
 	// Add frame to a decoder structure
 	decodedFrame := w.decoder.Insert(frame)
@@ -124,9 +115,19 @@ func (w *worker) processFrame(ctx context.Context, frame *frameBuf) {
 	if decodedFrame == nil {
 		return
 	}
-
-	fmt.Println("----[Debug]: worker.processFrame() Decoded Frame", decodedFrame.seqNr, "len", decodedFrame.frameLen, "index", decodedFrame.index)
+	// build frame
+	index := int(binary.BigEndian.Uint16(decodedFrame.raw[2:4]))
+	decodedFrame.index = index
+	// If index == 0 then we can be sure that there is no fragment at the beginning
+	// of the frame.
+	decodedFrame.fragNProcessed = index == 0
+	// If index == 0xffff then we can be sure that there are no complete packets in this
+	// frame.
+	decodedFrame.completePktsProcessed = index == 0xffff
+	decodedFrame.snd = w
+	// fmt.Println("----[Debug]: worker.processFrame() Decoded Frame", decodedFrame.seqNr, "len", decodedFrame.frameLen, "index", decodedFrame.index)
 	// Add to frame buf reassembly list.
+	// fmt.Println("----[Debug]: worker.processFrame() Adding frame to reassembly list. seq", decodedFrame.seqNr, "epoch", epoch)
 	rlist := w.getRlist(epoch)
 	rlist.Insert(ctx, decodedFrame)
 }

@@ -3,6 +3,8 @@ package dataplane
 import (
 	"container/list"
 	"fmt"
+
+	"github.com/scionproto/scion/go/lib/ringbuf"
 )
 
 type frameBufGroup struct {
@@ -12,17 +14,15 @@ type frameBufGroup struct {
 	numPaths uint8
 	// The frames with the same groupSeqNr
 	frames *list.List
-	// The combined frame
-	combined *frameBuf
 	// Is the group combined
 	isCombined bool
 }
 
-func GetPathIndex(fb *frameBuf) uint8 {
+func GetPathIndex(fb *encryptedFrameBuf) uint8 {
 	return uint8(fb.seqNr & 0xff)
 }
 
-func NewFrameBufGroup(fb *frameBuf, numPaths uint8) *frameBufGroup {
+func NewFrameBufGroup(fb *encryptedFrameBuf, numPaths uint8) *frameBufGroup {
 	groupSeqNr := fb.seqNr >> 8
 	pathIndex := GetPathIndex(fb)
 	if pathIndex >= 255 {
@@ -34,21 +34,19 @@ func NewFrameBufGroup(fb *frameBuf, numPaths uint8) *frameBufGroup {
 		groupSeqNr: groupSeqNr,
 		numPaths:   numPaths,
 		frames:     list.New(),
-		combined:   &frameBuf{raw: make([]byte, len(fb.raw))},
 		isCombined: false,
 	}
 	fbg.Insert(fb)
-	fbg.combined.Reset()
 	return fbg
 }
 
 func (fbg *frameBufGroup) Release() {
 	for e := fbg.frames.Front(); e != nil; e = e.Next() {
-		e.Value.(*frameBuf).Release()
+		e.Value.(*encryptedFrameBuf).Release()
 	}
 }
 
-func (fbg *frameBufGroup) Insert(fb *frameBuf) {
+func (fbg *frameBufGroup) Insert(fb *encryptedFrameBuf) {
 	// fmt.Println("----[Debug]: Inserted frame with seq", fb.seqNr)
 	fbg.frames.PushBack(fb)
 }
@@ -56,22 +54,19 @@ func (fbg *frameBufGroup) Insert(fb *frameBuf) {
 // Tries to combine the frames. If this group has numPaths many frames, the combined frame is stored
 // in fbg.combined and this function returns true. Otherwise, it returns false and no data is
 // changed.
-func (fbg *frameBufGroup) TryAndCombine() bool {
+func (fbg *frameBufGroup) TryAndCombine() *frameBuf {
 
-	if fbg.isCombined {
-		return true
-	}
 	if uint8(fbg.frames.Len()) < fbg.numPaths {
 		// fmt.Println("----[Debug]: Not enough share for combination. ", "frameCnt", fbg.frames.Len(), "numPaths", fbg.numPaths, "seq", fbg.groupSeqNr)
-		return false
+		return nil
 	}
 
-	firstFrame := fbg.frames.Front().Value.(*frameBuf)
+	firstFrame := fbg.frames.Front().Value.(*encryptedFrameBuf)
 
 	// Decode shares
 	shares := make([][]byte, fbg.numPaths)
 	for i, e := 0, fbg.frames.Front(); e != nil && i < int(fbg.numPaths); i, e = i+1, e.Next() {
-		fb := e.Value.(*frameBuf)
+		fb := e.Value.(*encryptedFrameBuf)
 		shares[i] = fb.raw[hdrLen:fb.frameLen]
 	}
 	output, err := Combine(shares)
@@ -80,21 +75,28 @@ func (fbg *frameBufGroup) TryAndCombine() bool {
 			fmt.Println("Share", i+1, "length:", len(shares[i]), "seq", fbg.groupSeqNr)
 		}
 		fmt.Println("----[Error]: Error combining shares:", err)
-		return false
+		return nil
 	}
 
-	// build frame
-	fbg.combined.index = firstFrame.index
-	fbg.combined.seqNr = firstFrame.seqNr >> 8
-	fbg.combined.snd = firstFrame.snd
-	copy(fbg.combined.raw[:hdrLen], firstFrame.raw[:hdrLen])
-	copy(fbg.combined.raw[hdrLen:], []byte(output))
-	fbg.combined.frameLen = len(output) + hdrLen
-	fbg.combined.fragNProcessed = fbg.combined.index == 0
-	fbg.combined.completePktsProcessed = fbg.combined.index == 0xffff
+	readEntries := make(ringbuf.EntryList, 1)
+	n := newFrameBufs(readEntries)
+
+	if n != 1 {
+		fmt.Println("----[Error]: ring.Read should return 0")
+		return nil
+	}
+
+	combinedFrame := readEntries[0].(*frameBuf)
+	copy(combinedFrame.raw[:hdrLen], firstFrame.raw[:hdrLen])
+	copy(combinedFrame.raw[hdrLen:], []byte(output))
+
+	combinedFrame.seqNr = firstFrame.seqNr >> 8
+	combinedFrame.frameLen = len(output) + hdrLen
+	combinedFrame.fragNProcessed = combinedFrame.index == 0
+	combinedFrame.completePktsProcessed = combinedFrame.index == 0xffff
 
 	fbg.isCombined = true
 	fbg.Release()
 
-	return true
+	return combinedFrame
 }

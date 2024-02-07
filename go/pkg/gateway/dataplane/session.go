@@ -15,7 +15,6 @@
 package dataplane
 
 import (
-	"encoding/binary"
 	"fmt"
 	"hash/crc64"
 	"net"
@@ -109,6 +108,7 @@ func (s *Session) Close() {
 // Write encodes the packet and sends it to the network.
 // The packet may be silently dropped.
 func (s *Session) Write(packet gopacket.Packet) {
+	// fmt.Println("encoder.write()")
 	s.encoder.Write(packet.Data())
 }
 
@@ -275,7 +275,7 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		copy(encryptedFrames[i][hdrLen:], shares[i])
 	}
 
-	fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
+	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
 	for pathID, sender := range s.senders {
 		sender.Write(encryptedFrames[pathID])
 	}

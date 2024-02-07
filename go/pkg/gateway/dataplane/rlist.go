@@ -81,6 +81,7 @@ func (l *reassemblyList) Insert(ctx context.Context, frame *frameBuf) {
 	if frame.seqNr < firstFrame.seqNr {
 		logger.Debug("----[Debug]: Received frame that is too old.", "seqNr", frame.seqNr)
 		increaseCounterMetric(l.tooOld, 1)
+		frame.Release()
 		return
 	}
 	last := l.entries.Back()
@@ -90,6 +91,7 @@ func (l *reassemblyList) Insert(ctx context.Context, frame *frameBuf) {
 		logger.Debug("Received duplicate frame.", "epoch", l.epoch, "seqNr", frame.seqNr,
 			"currentOldest", firstFrame.seqNr, "currentNewest", lastFrame.seqNr)
 		increaseCounterMetric(l.duplicate, 1)
+		frame.Release()
 		return
 	}
 	// If there is a gap between this frame and the last in the reassembly list,
@@ -121,6 +123,8 @@ func (l *reassemblyList) insertFirst(ctx context.Context, frame *frameBuf) {
 	frame.ProcessCompletePkts(ctx)
 	if frame.frag0Start != 0 {
 		l.entries.PushBack(frame)
+	} else {
+		frame.Release()
 	}
 
 }
@@ -213,6 +217,8 @@ func (l *reassemblyList) collectAndWrite(ctx context.Context) {
 }
 
 func (l *reassemblyList) removeEntry(e *list.Element) {
+	frame := e.Value.(*frameBuf)
+	frame.Release()
 	l.entries.Remove(e)
 }
 

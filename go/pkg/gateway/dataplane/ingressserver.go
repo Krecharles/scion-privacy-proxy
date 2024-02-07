@@ -84,9 +84,9 @@ func (d *IngressServer) read(ctx context.Context) error {
 	frames := make(ringbuf.EntryList, 64)
 	lastCleanup := time.Now()
 	for {
-		n := newFrameBufs(frames)
+		n := newEncryptedFrameBufs(frames)
 		for i := 0; i < n; i++ {
-			frame := frames[i].(*frameBuf)
+			frame := frames[i].(*encryptedFrameBuf)
 			// Read the bytes into frame.raw
 			read, src, err := d.Conn.ReadFrom(frame.raw)
 			if err != nil {
@@ -134,7 +134,7 @@ func (d *IngressServer) read(ctx context.Context) error {
 
 // dispatch dispatches a frame to the corresponding worker, spawning one if none
 // exist yet. Dispatching is done based on source ISD-AS -> source host Addr -> Sess Id.
-func (d *IngressServer) dispatch(ctx context.Context, frame *frameBuf, src *snet.UDPAddr) {
+func (d *IngressServer) dispatch(ctx context.Context, frame *encryptedFrameBuf, src *snet.UDPAddr) {
 	logger := log.FromCtx(ctx)
 	dispatchStr := fmt.Sprintf("%s/%s/%d", src.IA, src.Host, frame.sessId)
 	// Check if we already have a worker running and start one if not.
