@@ -50,6 +50,7 @@ func (g *Graph) FindPathsGreedy(source, target string, n int) [][]Edge {
 	var paths [][]Edge
 
 	for i := 0; i < n; i++ {
+		// Find the path with the lowest score
 		path := g.Paths[0]
 		minScore := g.CalcPathScore(path)
 		for _, p := range g.Paths {
@@ -63,6 +64,15 @@ func (g *Graph) FindPathsGreedy(source, target string, n int) [][]Edge {
 		// Increase the weight of the edges in the current path
 		for _, e := range path {
 			g.Weights[e.String()] *= 100.0
+			// Increase the weight of other edges between the same nodes
+			for _, p := range g.Paths {
+				for _, e2 := range p {
+					if e.Source == e2.Source && e.Target == e2.Target && e.Interface != e2.Interface {
+						g.Weights[e2.String()] *= 10.0
+					}
+				}
+
+			}
 		}
 	}
 
@@ -112,7 +122,8 @@ func CalcProbabilityOfCompromiseConst(paths [][]Edge) float64 {
 }
 
 var prevGivenPaths [][]Edge
-var prevSelectedPaths []snet.Path
+var prevSelectedPaths [][]Edge
+var prevSelectedOriginalPaths []snet.Path
 
 // Takes a list of snet.Paths and returns a list of snet.Paths are selected greedily. The function
 // is cached, i.e. if given paths have not changed since last call, the selected paths will not be
@@ -128,7 +139,7 @@ func BuildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 	// Check if the given paths have changed since last call
 	if isSamePathSet(pathsEdgeReprs, prevGivenPaths) {
 		// fmt.Println("----[DEBUG]: Paths have not changed since last call")
-		return prevSelectedPaths
+		return prevSelectedOriginalPaths
 	}
 
 	// Build the graph
@@ -145,14 +156,18 @@ func BuildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 		returnOriginalPaths = append(returnOriginalPaths, matchPathWithOriginalPaths(p, paths))
 	}
 
+	if !isSamePathSet(prevSelectedPaths, selectedPaths) {
+		fmt.Println("----[DEBUG]: Selected paths with score", CalcProbabilityOfCompromiseConst(selectedPaths))
+		// print the selected paths
+		for _, p := range selectedPaths {
+			fmt.Println("----[DEBUG]: Selected path:", pathEdgesToString(p))
+		}
+	}
+
 	// Cache the results
 	prevGivenPaths = pathsEdgeReprs
-	prevSelectedPaths = returnOriginalPaths
-
-	fmt.Println("----[DEBUG]: Selected paths with score", CalcProbabilityOfCompromiseConst(selectedPaths))
-	// for _, p := range selectedPaths {
-	// 	fmt.Println("----[DEBUG]: Selected path:", pathEdgesToString(p))
-	// }
+	prevSelectedPaths = selectedPaths
+	prevSelectedOriginalPaths = returnOriginalPaths
 
 	return returnOriginalPaths
 }
