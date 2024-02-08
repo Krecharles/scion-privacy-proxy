@@ -190,7 +190,7 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 	// Re-compute MTU after selecting the paths
 	// fmt.Println("----[DEBUG]: Session.SetPaths() ---- Recomputing MTU, oldMtu=", s.mtu)
 	// oldMtu := s.mtu
-	s.mtu = 65535
+	lowestMtu := 65535
 	for _, path := range paths {
 
 		// MTU must account for the size of the SCION header.
@@ -203,13 +203,15 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 		pathLen := len(scionPath.Raw)
 
 		pathMtu := int(path.Metadata().MTU) - slayers.CmnHdrLen - addrLen - pathLen - udpHdrLen
-		if pathMtu < s.mtu {
-			s.mtu = pathMtu
+		if pathMtu < lowestMtu {
+			lowestMtu = pathMtu
 		}
 	}
-	// if oldMtu != s.mtu {
-	// 	fmt.Println("----[DEBUG]: Session.SetPaths() ---- MTU changed from", oldMtu, "to", s.mtu)
-	// }
+
+	if lowestMtu != s.mtu {
+		fmt.Println("----[DEBUG]: Session.SetPaths() ---- MTU changed from", s.mtu, "to", lowestMtu)
+		s.mtu = lowestMtu
+	}
 
 	return nil
 }
@@ -235,7 +237,7 @@ func (s *Session) run() {
 
 		// Get the SIG frame, then apply SSS to the content.
 		// Be sure to leave one byte empty because SSS expands into that
-		unencryptedFrame := s.encoder.ReadEncryptedSIGFrame(s.mtu) // TODO problem, mtu might change
+		unencryptedFrame := s.encoder.ReadEncryptedSIGFrame(s.mtu)
 		if unencryptedFrame == nil {
 			// sender was closed and all the buffered frames were sent.
 			break
@@ -273,6 +275,11 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		encryptedFrames[i][seqPos+7] = byte(i)
 		// copy over the share
 		copy(encryptedFrames[i][hdrLen:], shares[i])
+		if len(shares[i]) > 1000 {
+			fmt.Println("SplitAndSend() - len(shares[i])", len(shares[i]), "MTU", s.mtu, "len(encryptedFrames)", len(encryptedFrames))
+			fmt.Println(len(frame))
+			// fmt.Println(frame)
+		}
 	}
 
 	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
