@@ -125,13 +125,13 @@ func (e *encoder) ReadEncryptedSIGFrame(mtu int) []byte {
 	}
 
 	// encrypt the frame
-	encryptedFrame, err := Encrypt(frame[hdrLen:], e.aesKey)
+	share, err := Encrypt(frame[hdrLen:], e.aesKey)
 	if err != nil {
 		panic(err)
 	}
 
-	frame = frame[:hdrLen+len(encryptedFrame)]
-	copy(frame[hdrLen:], encryptedFrame)
+	frame = frame[:hdrLen+len(share)]
+	copy(frame[hdrLen:], share)
 	return frame
 }
 

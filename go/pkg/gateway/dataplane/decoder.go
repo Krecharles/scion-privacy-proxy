@@ -7,32 +7,34 @@ import (
 )
 
 const (
-	// frameBufCap is the size of a preallocated frame buffer.
-	encryptedFrameBufCap = 65535
+	// shareBufCap is the size of a preallocated frame buffer.
+	shareBufCap = 65535
 	// freeFramesCap is the number of preallocated Framebuf objects.
-	freeEncryptedFramesCap = 1024
+	freeSharesCap = 1024
 )
 
 var (
 	// Cache of the frame buffers free to be used.
-	freeEncryptedFrames *ringbuf.Ring
+	freeShares *ringbuf.Ring
 )
 
-func newEncryptedFrameBufs(encryptedframes ringbuf.EntryList) int {
-	if freeEncryptedFrames == nil {
-		initFreeEncryptedFrames()
+func newShareBufs(encryptedframes ringbuf.EntryList) int {
+	if freeShares == nil {
+		initFreeShares()
 	}
-	n, _ := freeEncryptedFrames.Read(encryptedframes, true)
+	n, _ := freeShares.Read(encryptedframes, true)
 	return n
 }
 
-func initFreeEncryptedFrames() {
-	freeEncryptedFrames = ringbuf.New(freeEncryptedFramesCap, func() interface{} {
-		return newEncryptedFrameBuf()
+func initFreeShares() {
+	freeShares = ringbuf.New(freeSharesCap, func() interface{} {
+		return newShareBuf()
 	}, "ingress_freeEncrypted")
 }
 
-type encryptedFrameBuf struct {
+// shareBuf is a struct used to reassemble shares into a SIG frame. shareBufs
+// are managed by the decoder. Once enough shares
+type shareBuf struct {
 	// Session Id of the frame.
 	sessId uint8
 	// Sequence number of the frame.
@@ -45,47 +47,47 @@ type encryptedFrameBuf struct {
 	snd ingressSender
 }
 
-func newEncryptedFrameBuf() *encryptedFrameBuf {
-	buf := &encryptedFrameBuf{raw: make([]byte, encryptedFrameBufCap)}
+func newShareBuf() *shareBuf {
+	buf := &shareBuf{raw: make([]byte, shareBufCap)}
 	buf.Reset()
 	return buf
 }
 
-func (fb *encryptedFrameBuf) Reset() {
+func (fb *shareBuf) Reset() {
 	fb.sessId = 0
 	fb.seqNr = 0
 	fb.frameLen = 0
 	fb.snd = nil
 }
 
-func (fb *encryptedFrameBuf) Release() {
+func (fb *shareBuf) Release() {
 	fb.Reset()
-	if freeEncryptedFrames == nil {
-		initFreeEncryptedFrames()
+	if freeShares == nil {
+		initFreeShares()
 	}
-	freeEncryptedFrames.Write(ringbuf.EntryList{fb}, true)
+	freeShares.Write(ringbuf.EntryList{fb}, true)
 }
 
 type decoder struct {
 	requiredSharesForDecode int
-	fbgs                    map[uint64]*frameBufGroup
+	fbgs                    map[uint64]*shareBufGroup
 	aesKey                  string
 }
 
 func newDecoder(requiredSharesForDecode int, aesKey string) *decoder {
 	return &decoder{
 		requiredSharesForDecode: requiredSharesForDecode,
-		fbgs:                    make(map[uint64]*frameBufGroup),
+		fbgs:                    make(map[uint64]*shareBufGroup),
 		aesKey:                  aesKey,
 	}
 }
 
-func (d *decoder) Insert(frame *encryptedFrameBuf) *frameBuf {
+func (d *decoder) Insert(frame *shareBuf) *frameBuf {
 	groupSeqNr := uint64(frame.seqNr >> 8)
-	// fmt.Println("----[Debug]: Inserting new frame seq=", frame.seqNr, "groupSeqNr=", groupSeqNr, "len=", frame.frameLen)
-	// check if groupSeqNr contained in d.fbgs
 
+	// check if groupSeqNr contained in d.fbgs
 	fbg, ok := d.fbgs[groupSeqNr]
+
 	// check if groupSeqNr already combined
 	if ok && fbg.isCombined {
 		frame.Release()
@@ -95,7 +97,7 @@ func (d *decoder) Insert(frame *encryptedFrameBuf) *frameBuf {
 
 	if !ok {
 		// There is no fbg for the groupSeqNr, so create one
-		fbg = NewFrameBufGroup(frame, uint8(d.requiredSharesForDecode))
+		fbg = NewShareBufGroup(frame, uint8(d.requiredSharesForDecode))
 		d.fbgs[groupSeqNr] = fbg
 	} else {
 		fbg.Insert(frame)

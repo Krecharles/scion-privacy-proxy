@@ -7,7 +7,7 @@ import (
 	"github.com/scionproto/scion/go/lib/ringbuf"
 )
 
-type frameBufGroup struct {
+type shareBufGroup struct {
 	// The first 56 bits of SeqNr
 	groupSeqNr uint64
 	// The number of paths needed for decryption. Also called T
@@ -18,19 +18,19 @@ type frameBufGroup struct {
 	isCombined bool
 }
 
-func GetPathIndex(fb *encryptedFrameBuf) uint8 {
+func GetPathIndex(fb *shareBuf) uint8 {
 	return uint8(fb.seqNr & 0xff)
 }
 
-func NewFrameBufGroup(fb *encryptedFrameBuf, numPaths uint8) *frameBufGroup {
+func NewShareBufGroup(fb *shareBuf, numPaths uint8) *shareBufGroup {
 	groupSeqNr := fb.seqNr >> 8
 	pathIndex := GetPathIndex(fb)
 	if pathIndex >= 255 {
 		// Error: path index out of bound
-		fmt.Println("----[WARNING]: framebufgroup.NewFrameBufGroup: path index out of bound")
+		fmt.Println("----[WARNING]: framebufgroup.NewShareBufGroup: path index out of bound")
 		return nil
 	}
-	fbg := &frameBufGroup{
+	fbg := &shareBufGroup{
 		groupSeqNr: groupSeqNr,
 		numPaths:   numPaths,
 		frames:     list.New(),
@@ -40,13 +40,13 @@ func NewFrameBufGroup(fb *encryptedFrameBuf, numPaths uint8) *frameBufGroup {
 	return fbg
 }
 
-func (fbg *frameBufGroup) Release() {
+func (fbg *shareBufGroup) Release() {
 	for e := fbg.frames.Front(); e != nil; e = e.Next() {
-		e.Value.(*encryptedFrameBuf).Release()
+		e.Value.(*shareBuf).Release()
 	}
 }
 
-func (fbg *frameBufGroup) Insert(fb *encryptedFrameBuf) {
+func (fbg *shareBufGroup) Insert(fb *shareBuf) {
 	// fmt.Println("----[Debug]: Inserted frame with seq", fb.seqNr)
 	fbg.frames.PushBack(fb)
 }
@@ -54,19 +54,19 @@ func (fbg *frameBufGroup) Insert(fb *encryptedFrameBuf) {
 // Tries to combine the frames. If this group has numPaths many frames, the combined frame is stored
 // in fbg.combined and this function returns true. Otherwise, it returns false and no data is
 // changed.
-func (fbg *frameBufGroup) TryAndCombine() *frameBuf {
+func (fbg *shareBufGroup) TryAndCombine() *frameBuf {
 
 	if uint8(fbg.frames.Len()) < fbg.numPaths {
 		// fmt.Println("----[Debug]: Not enough share for combination. ", "frameCnt", fbg.frames.Len(), "numPaths", fbg.numPaths, "seq", fbg.groupSeqNr)
 		return nil
 	}
 
-	firstFrame := fbg.frames.Front().Value.(*encryptedFrameBuf)
+	firstFrame := fbg.frames.Front().Value.(*shareBuf)
 
 	// Decode shares
 	shares := make([][]byte, fbg.numPaths)
 	for i, e := 0, fbg.frames.Front(); e != nil && i < int(fbg.numPaths); i, e = i+1, e.Next() {
-		fb := e.Value.(*encryptedFrameBuf)
+		fb := e.Value.(*shareBuf)
 		shares[i] = fb.raw[hdrLen:fb.frameLen]
 	}
 	output, err := Combine(shares)

@@ -237,15 +237,15 @@ func (s *Session) run() {
 
 		// Get the SIG frame, then apply SSS to the content.
 		// Be sure to leave one byte empty because SSS expands into that
-		unencryptedFrame := s.encoder.ReadEncryptedSIGFrame(s.mtu)
-		if unencryptedFrame == nil {
+		unshare := s.encoder.ReadEncryptedSIGFrame(s.mtu)
+		if unshare == nil {
 			// sender was closed and all the buffered frames were sent.
 			break
 		}
 
-		err := SplitAndSend(s, unencryptedFrame, s.numberOfPathsN, s.numberOfPathsT)
+		err := SplitAndSend(s, unshare, s.numberOfPathsN, s.numberOfPathsT)
 		if err != nil {
-			fmt.Println(unencryptedFrame, len(unencryptedFrame))
+			fmt.Println(unshare, len(unshare))
 			fmt.Println("----[Error]: Error splitting frame")
 			panic(err)
 		}

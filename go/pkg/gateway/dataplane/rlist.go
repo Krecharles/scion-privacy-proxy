@@ -79,7 +79,7 @@ func (l *reassemblyList) Insert(ctx context.Context, frame *frameBuf) {
 	firstFrame := first.Value.(*frameBuf)
 	// Check whether frame is too old.
 	if frame.seqNr < firstFrame.seqNr {
-		logger.Debug("----[Debug]: Received frame that is too old.", "seqNr", frame.seqNr)
+		logger.Debug("Received frame that is too old.", "seqNr", frame.seqNr)
 		increaseCounterMetric(l.tooOld, 1)
 		frame.Release()
 		return

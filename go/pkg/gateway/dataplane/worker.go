@@ -87,7 +87,7 @@ func (w *worker) Run(ctx context.Context) {
 			break
 		}
 		for i := 0; i < n; i++ {
-			frame := frames[i].(*encryptedFrameBuf)
+			frame := frames[i].(*shareBuf)
 			w.processFrame(ctx, frame)
 			frames[i] = nil
 		}
@@ -102,7 +102,7 @@ func (w *worker) Run(ctx context.Context) {
 // processFrame processes a SIG frame by first writing all completely contained
 // packets to the wire and then adding the frame to the corresponding reassembly
 // list if needed.
-func (w *worker) processFrame(ctx context.Context, frame *encryptedFrameBuf) {
+func (w *worker) processFrame(ctx context.Context, frame *shareBuf) {
 
 	// fmt.Println("----[Debug]: worker.processFrame() Processing frame", frame.seqNr, "len", frame.frameLen, "index", frame.index)
 	epoch := int(binary.BigEndian.Uint32(frame.raw[4:8]) & 0xfffff)

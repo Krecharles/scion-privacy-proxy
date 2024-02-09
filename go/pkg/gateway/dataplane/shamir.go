@@ -130,6 +130,11 @@ func makePolynomial(intercept, degree uint8) (polynomial, error) {
 		return p, err
 	}
 
+	// Assign co-efficients statically to test performance
+	// for i := 1; i <= int(degree); i++ {
+	// 	p.coefficients[i] = uint8(i)
+	// }
+
 	return p, nil
 }
 
@@ -265,6 +270,12 @@ func Split(secret []byte, parts, threshold int) ([][]byte, error) {
 	// Generate random list of x coordinates
 	mathrand.Seed(time.Now().UnixNano())
 	xCoordinates := mathrand.Perm(255)
+
+	// // Generate the permutation statically for performance
+	// xCoordinates := make([]int, 255)
+	// for i := 0; i < 255; i++ {
+	// 	xCoordinates[i] = 10 + i
+	// }
 
 	// Allocate the output array, initialize the final byte
 	// of the output with the offset. The representation of each
