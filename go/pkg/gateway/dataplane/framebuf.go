@@ -109,7 +109,6 @@ func (fb *frameBuf) Release() {
 // ProcessCompletePkts write all complete packets in the frame to the wire and
 // sets the correct metadata in case there is a fragment at the end of the frame.
 func (fb *frameBuf) ProcessCompletePkts(ctx context.Context) {
-	// fmt.Println("----[Debug]: Processing complete packets in framebuf. ", fb.seqNr)
 	logger := log.FromCtx(ctx)
 	if fb.completePktsProcessed || fb.index == 0xffff {
 		fb.completePktsProcessed = true
@@ -148,7 +147,6 @@ func (fb *frameBuf) ProcessCompletePkts(ctx context.Context) {
 			break
 		}
 		// We got everything for the packet. Write it out to the wire.
-		// fmt.Println("----[Debug]: Writing packet to wire via framebuf. seq:", fb.seqNr, "len", pktLen, "offset", offset, "frameLen", fb.frameLen)
 		if err := fb.snd.send(rawPkt[:pktLen]); err != nil {
 			logger.Error("Unable to send packet", "err", err)
 		}

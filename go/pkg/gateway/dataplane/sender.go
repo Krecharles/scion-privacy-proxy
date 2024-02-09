@@ -35,6 +35,7 @@ const (
 
 // sender handles sending traffic via one particular path.
 type sender struct {
+	// ring is the ring buffer containing encrypted shares to be sent
 	ring               *pktRing
 	conn               net.PacketConn
 	address            net.Addr
@@ -105,8 +106,6 @@ func (c *sender) run() {
 			// Sender was closed and all the buffered frames were sent.
 			break
 		}
-		// fmt.Println("----[Debug]: sender wrote frame to network", "len", len(frame), "seq", binary.BigEndian.Uint64(frame[8:16]))
-		// fmt.Println("sender used path", c.path)
 		_, err := c.conn.WriteTo(frame, c.address)
 		if err != nil {
 			increaseCounterMetric(c.metrics.SendExternalErrors, 1)

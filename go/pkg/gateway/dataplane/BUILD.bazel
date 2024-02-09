@@ -12,6 +12,7 @@ go_library(
         "encoder.go",
         "framebuf.go",
         "sharebufgroup.go",
+        "sharebuf.go",
         "ingressserver.go",
         "ipforwarder.go",
         "pktring.go",

@@ -2,87 +2,86 @@ package dataplane
 
 import (
 	"container/list"
-	"fmt"
+	"context"
 
+	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/ringbuf"
 )
 
 type shareBufGroup struct {
-	// The first 56 bits of SeqNr
+	// groupSeqNr is the first 56 bits of SeqNr of every share in the group
 	groupSeqNr uint64
-	// The number of paths needed for decryption. Also called T
+	// numPaths is T in a (T, N) secret sharing scheme
 	numPaths uint8
-	// The frames with the same groupSeqNr
-	frames *list.List
+	// The shares with the same groupSeqNr
+	shares *list.List
 	// Is the group combined
 	isCombined bool
 }
 
-func GetPathIndex(fb *shareBuf) uint8 {
-	return uint8(fb.seqNr & 0xff)
+func GetPathIndex(sb *shareBuf) uint8 {
+	return uint8(sb.seqNr & 0xff)
 }
 
-func NewShareBufGroup(fb *shareBuf, numPaths uint8) *shareBufGroup {
-	groupSeqNr := fb.seqNr >> 8
-	pathIndex := GetPathIndex(fb)
+func NewShareBufGroup(sb *shareBuf, numPaths uint8) *shareBufGroup {
+	groupSeqNr := sb.seqNr >> 8
+	pathIndex := GetPathIndex(sb)
 	if pathIndex >= 255 {
-		// Error: path index out of bound
-		fmt.Println("----[WARNING]: framebufgroup.NewShareBufGroup: path index out of bound")
+		// Error: path index out of bounds
 		return nil
 	}
-	fbg := &shareBufGroup{
+	sbg := &shareBufGroup{
 		groupSeqNr: groupSeqNr,
 		numPaths:   numPaths,
-		frames:     list.New(),
+		shares:     list.New(),
 		isCombined: false,
 	}
-	fbg.Insert(fb)
-	return fbg
+	sbg.Insert(sb)
+	return sbg
 }
 
-func (fbg *shareBufGroup) Release() {
-	for e := fbg.frames.Front(); e != nil; e = e.Next() {
+func (sbg *shareBufGroup) Release() {
+	for e := sbg.shares.Front(); e != nil; e = e.Next() {
 		e.Value.(*shareBuf).Release()
 	}
 }
 
-func (fbg *shareBufGroup) Insert(fb *shareBuf) {
-	// fmt.Println("----[Debug]: Inserted frame with seq", fb.seqNr)
-	fbg.frames.PushBack(fb)
+func (sbg *shareBufGroup) Insert(sb *shareBuf) {
+	sbg.shares.PushBack(sb)
 }
 
-// Tries to combine the frames. If this group has numPaths many frames, the combined frame is stored
-// in fbg.combined and this function returns true. Otherwise, it returns false and no data is
-// changed.
-func (fbg *shareBufGroup) TryAndCombine() *frameBuf {
+// TryAndCombine tries to combine the shares. If this group has numPaths many shares, the combined
+// frame is returned, otherwise it returns nil.
+func (sbg *shareBufGroup) TryAndCombine(ctx context.Context) *frameBuf {
+	logger := log.FromCtx(ctx)
 
-	if uint8(fbg.frames.Len()) < fbg.numPaths {
-		// fmt.Println("----[Debug]: Not enough share for combination. ", "frameCnt", fbg.frames.Len(), "numPaths", fbg.numPaths, "seq", fbg.groupSeqNr)
+	if uint8(sbg.shares.Len()) < sbg.numPaths {
+		// Not enough shares for combination
 		return nil
 	}
 
-	firstFrame := fbg.frames.Front().Value.(*shareBuf)
+	firstFrame := sbg.shares.Front().Value.(*shareBuf)
 
-	// Decode shares
-	shares := make([][]byte, fbg.numPaths)
-	for i, e := 0, fbg.frames.Front(); e != nil && i < int(fbg.numPaths); i, e = i+1, e.Next() {
-		fb := e.Value.(*shareBuf)
-		shares[i] = fb.raw[hdrLen:fb.frameLen]
+	// Extract shares from the group into a slice
+	shares := make([][]byte, sbg.numPaths)
+	for i, e := 0, sbg.shares.Front(); e != nil && i < int(sbg.numPaths); i, e = i+1, e.Next() {
+		sb := e.Value.(*shareBuf)
+		shares[i] = sb.raw[hdrLen:sb.frameLen]
 	}
+
+	// Combine the shares
 	output, err := Combine(shares)
 	if err != nil {
-		for i := 0; i < len(shares); i++ {
-			fmt.Println("Share", i+1, "length:", len(shares[i]), "seq", fbg.groupSeqNr)
-		}
-		fmt.Println("----[Error]: Error combining shares:", err)
+		logger.Debug("Error combining shares.", "err", err)
 		return nil
 	}
+
+	// Create a new frameBuf and copy the header and the combined share into it
 
 	readEntries := make(ringbuf.EntryList, 1)
 	n := newFrameBufs(readEntries)
 
 	if n != 1 {
-		fmt.Println("----[Error]: ring.Read should return 0")
 		return nil
 	}
 
@@ -95,8 +94,8 @@ func (fbg *shareBufGroup) TryAndCombine() *frameBuf {
 	combinedFrame.fragNProcessed = combinedFrame.index == 0
 	combinedFrame.completePktsProcessed = combinedFrame.index == 0xffff
 
-	fbg.isCombined = true
-	fbg.Release()
+	sbg.isCombined = true
+	sbg.Release()
 
 	return combinedFrame
 }

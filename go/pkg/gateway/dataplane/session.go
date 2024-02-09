@@ -65,8 +65,9 @@ type Session struct {
 	mutex              sync.Mutex
 	// senders is a list of currently used senders.
 	senders []*sender
-	// multipath encoder
-	encoder        *encoder
+	// encoder is the encoder that transforms IP packets into SIG frames
+	encoder *encoder
+	// mtu is the minimal MTU of all paths
 	mtu            int
 	numberOfPathsT int
 	numberOfPathsN int
@@ -95,8 +96,6 @@ func NewSession(sessionId uint8, gatewayAddr net.UDPAddr,
 // Close signals that the session should close up its internal Connections. Close returns as
 // soon as forwarding goroutines are signaled to shut down (never blocks).
 func (s *Session) Close() {
-	fmt.Println("----[DEBUG]: Session.Close()")
-	// senders will be closed in run() once encoder.Read() returns nil.
 	s.mutex.Lock()
 	for _, snd := range s.senders {
 		snd.Close()
@@ -108,7 +107,6 @@ func (s *Session) Close() {
 // Write encodes the packet and sends it to the network.
 // The packet may be silently dropped.
 func (s *Session) Write(packet gopacket.Packet) {
-	// fmt.Println("encoder.write()")
 	s.encoder.Write(packet.Data())
 }
 
@@ -137,7 +135,6 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// fmt.Println("----[DEBUG]: Session.SetPaths() ---- Setting paths")
 	created := make([]*sender, 0, len(paths))
 	reused := make(map[*sender]bool, len(s.senders))
 	for _, existingSender := range s.senders {
@@ -188,8 +185,6 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 	s.senders = newSenders
 
 	// Re-compute MTU after selecting the paths
-	// fmt.Println("----[DEBUG]: Session.SetPaths() ---- Recomputing MTU, oldMtu=", s.mtu)
-	// oldMtu := s.mtu
 	lowestMtu := 65535
 	for _, path := range paths {
 
@@ -197,9 +192,6 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 		localAddr := s.DataPlaneConn.LocalAddr().(*net.UDPAddr)
 		addrLen := addr.IABytes*2 + len(localAddr.IP) + len(s.GatewayAddr.IP)
 		scionPath, _ := path.Dataplane().(snetpath.SCION)
-		// if !ok {
-		// 	return nil, serrors.New("not a scion path", "type", common.TypeOf(path.Dataplane()))
-		// }
 		pathLen := len(scionPath.Raw)
 
 		pathMtu := int(path.Metadata().MTU) - slayers.CmnHdrLen - addrLen - pathLen - udpHdrLen
@@ -209,7 +201,6 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 	}
 
 	if lowestMtu != s.mtu {
-		fmt.Println("----[DEBUG]: Session.SetPaths() ---- MTU changed from", s.mtu, "to", lowestMtu)
 		s.mtu = lowestMtu
 	}
 
@@ -217,55 +208,47 @@ func (s *Session) SetPaths(paths []snet.Path) error {
 }
 
 func (s *Session) run() {
-	fmt.Println("----[DEBUG]: Session is running, T=", s.numberOfPathsT, "N=", s.numberOfPathsN)
-	for {
 
-		// There is a race condition issue.
-		// If the paths changes after encoder.Read() returns and before the mutex is locked,
-		// the value of currentMtuSum will be different to len(frame)
+	fmt.Println("Session is running. T=", s.numberOfPathsT, "N=", s.numberOfPathsN)
+
+	for {
 
 		startTime := time.Now()
 		for len(s.senders) < s.numberOfPathsN || s.mtu == 0 {
-			// only read packets when at least 2 paths are needed to decrypt the message
-			// -fmt.Println("session.run(), Waiting for more paths (T < 2)")
-
 			if time.Since(startTime) > time.Second*5 {
-				fmt.Println("----[ERROR]: 5 seconds have passed and still not enough paths.")
-				panic("not enough paths")
+				panic("There less than T paths available after 5 second wait.")
 			}
 		}
 
 		// Get the SIG frame, then apply SSS to the content.
-		// Be sure to leave one byte empty because SSS expands into that
-		unshare := s.encoder.ReadEncryptedSIGFrame(s.mtu)
-		if unshare == nil {
+		sigFrame := s.encoder.ReadEncryptedSIGFrame(s.mtu)
+		if sigFrame == nil {
 			// sender was closed and all the buffered frames were sent.
 			break
 		}
 
-		err := SplitAndSend(s, unshare, s.numberOfPathsN, s.numberOfPathsT)
+		err := s.splitAndSend(sigFrame, s.numberOfPathsN, s.numberOfPathsT)
 		if err != nil {
-			fmt.Println(unshare, len(unshare))
-			fmt.Println("----[Error]: Error splitting frame")
 			panic(err)
 		}
 
 	}
 }
 
-func SplitAndSend(s *Session, frame []byte, N, T int) error {
+func (s *Session) splitAndSend(frame []byte, N, T int) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if T > N || N > 255 || T < 1 || N < 1 || len(s.senders) < N {
-		fmt.Printf("Invalid N or T. N=%d, T=%d, s.senders=%d\n", N, T, len(s.senders))
 		panic("Invalid N or T")
 	}
 
+	// split the frame into N shares
 	shares, err := Split(frame[hdrLen:], N, T)
 	if err != nil {
 		return err
 	}
 
+	// create N encrypted frames
 	encryptedFrames := make([][]byte, N)
 	for i := 0; i < N; i++ {
 		encryptedFrames[i] = make([]byte, hdrLen+len(shares[i]))
@@ -275,14 +258,9 @@ func SplitAndSend(s *Session, frame []byte, N, T int) error {
 		encryptedFrames[i][seqPos+7] = byte(i)
 		// copy over the share
 		copy(encryptedFrames[i][hdrLen:], shares[i])
-		if len(shares[i]) > 1000 {
-			fmt.Println("SplitAndSend() - len(shares[i])", len(shares[i]), "MTU", s.mtu, "len(encryptedFrames)", len(encryptedFrames))
-			fmt.Println(len(frame))
-			// fmt.Println(frame)
-		}
 	}
 
-	// fmt.Println("----[DEBUG]: SplitAndSend() ---- Sending shares to", N, "paths", "len senders", len(s.senders), "MTU", len(encryptedFrames[0]), "seq", uint64(binary.BigEndian.Uint64(frame[seqPos:seqPos+8])>>8))
+	// write the encrypted frames to the respective senders
 	for pathID, sender := range s.senders {
 		sender.Write(encryptedFrames[pathID])
 	}

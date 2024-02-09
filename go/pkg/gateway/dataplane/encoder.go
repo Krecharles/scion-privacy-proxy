@@ -64,17 +64,18 @@ type encoder struct {
 	// frame is the frame being built at the moment.
 	// To avoid allocations, we reuse the same frame buffer over and over again.
 	frame []byte
-
-	// the maximum number of bytes that can be read from packets such that the resulting encrypted
-	// frame is still below the MTU
+	// maxMessageLength is the maximum number of bytes that can be read from packets such that the
+	// resulting encrypted frame is still below the MTU
 	maxMessageLength int
-	aesKey           string
+	// aesKey is the key used to encrypt the frame. The key is currently provided in the config
+	// .toml file
+	aesKey string
 }
 
 // newEncoder creates a new encoder instance.
 // mtu is max size of the frame, excluding SCION header, but including SIG header.
 func newEncoder(sessionID uint8, streamID uint32, aesKey string) *encoder {
-	e := &encoder{
+	return &encoder{
 		sessionID: sessionID,
 		streamID:  streamID,
 		seq:       0,
@@ -82,7 +83,6 @@ func newEncoder(sessionID uint8, streamID uint32, aesKey string) *encoder {
 		frame:     make([]byte, 0),
 		aesKey:    aesKey,
 	}
-	return e
 }
 
 // Close initiates the close procedure. Frames can still be read.
@@ -96,6 +96,7 @@ func (e *encoder) Write(pkt []byte) {
 	e.ring.Write(pkt, false)
 }
 
+// calculateMaxMessageLengthForMTU subtracts the padding from the MTU that is added by AES
 func calculateMaxMessageLengthForMTU(mtu int) int {
 	if mtu < 40 {
 		return 0
@@ -103,6 +104,7 @@ func calculateMaxMessageLengthForMTU(mtu int) int {
 	return 3*(int(math.Floor(float64(mtu-40)/4.0))) + 2
 }
 
+// ReadEncryptedSIGFrame reads a SIG frame using ReadRegularSIGFrame and encrypts it.
 func (e *encoder) ReadEncryptedSIGFrame(mtu int) []byte {
 
 	e.maxMessageLength = calculateMaxMessageLengthForMTU(mtu - 1) // -1 because the secret sharing scheme takes up one tag byte for reconstruction
@@ -116,7 +118,8 @@ func (e *encoder) ReadEncryptedSIGFrame(mtu int) []byte {
 	binary.BigEndian.PutUint32(e.frame[streamPos:streamPos+4], e.streamID&0xfffff)
 	binary.BigEndian.PutUint64(e.frame[seqPos:seqPos+8], e.seq)
 
-	// Increase the sequence number of the group
+	// Increase the sequence number of the share group by 256 as they are identified by the last
+	// byte
 	e.seq += 256
 	frame := e.ReadRegularSIGFrame()
 
@@ -163,14 +166,9 @@ func (e *encoder) ReadRegularSIGFrame() []byte {
 		// data in blocking manner. If there's already some data in the frame we will
 		// still try to stuff it with more packets, but if there are no packets available,
 		// we'll send what we have immediately.
-
-		// The Read() function will only be blocked when there is nothing but the header.
-		// So it's safe to unlock, and let the frame buffer being resized during the time window.
-
 		block := (pos == hdrLen)
 		var n int
 		e.pkt, n = e.ring.Read(block)
-
 		if n == 0 {
 			// No more packets to stuff into the frame. Go on with sending.
 			return e.frame[:pos]

@@ -79,7 +79,6 @@ func (f *FilteringPathSelector) Select(selectables []Selectable, current Fingerp
 			IsRevoked:   f.RevocationStore.IsRevoked(path),
 		})
 	}
-	// fmt.Println("----[Debug]: Allowed paths", len(allowed))
 	// Sort the allowed paths according the the perf policy.
 	sort.SliceStable(allowed, func(i, j int) bool {
 		// If some of the paths are alive (probes are passing through), yet still revoked
@@ -119,12 +118,10 @@ func (f *FilteringPathSelector) Select(selectables []Selectable, current Fingerp
 		pathCount = 1
 	}
 	if pathCount > len(allowed) {
-		// panic(fmt.Sprintf("PathCount %d is larger than the number of allowed paths %d", pathCount, len(allowed)))
 		pathCount = len(allowed)
 	}
 
 	if len(allowed) == 0 {
-		fmt.Println("----[Warning]: No paths found")
 		return Selection{
 			Paths:         make([]snet.Path, 0),
 			Info:          strings.Join(info, "\n"),

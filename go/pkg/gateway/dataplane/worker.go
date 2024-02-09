@@ -50,7 +50,7 @@ type worker struct {
 	rlists           map[int]*reassemblyList
 	markedForCleanup bool
 	tunIO            io.WriteCloser
-	decoder          decoder
+	decoder          Decoder
 }
 
 func newWorker(remote *snet.UDPAddr, sessID uint8, numberOfPathsT int,
@@ -104,13 +104,12 @@ func (w *worker) Run(ctx context.Context) {
 // list if needed.
 func (w *worker) processFrame(ctx context.Context, frame *shareBuf) {
 
-	// fmt.Println("----[Debug]: worker.processFrame() Processing frame", frame.seqNr, "len", frame.frameLen, "index", frame.index)
 	epoch := int(binary.BigEndian.Uint32(frame.raw[4:8]) & 0xfffff)
 	seqNr := binary.BigEndian.Uint64(frame.raw[8:16])
 	frame.seqNr = seqNr
 
 	// Add frame to a decoder structure
-	decodedFrame := w.decoder.Insert(frame)
+	decodedFrame := w.decoder.Insert(ctx, frame)
 	// Check if decoder was successful
 	if decodedFrame == nil {
 		return
@@ -125,9 +124,7 @@ func (w *worker) processFrame(ctx context.Context, frame *shareBuf) {
 	// frame.
 	decodedFrame.completePktsProcessed = index == 0xffff
 	decodedFrame.snd = w
-	// fmt.Println("----[Debug]: worker.processFrame() Decoded Frame", decodedFrame.seqNr, "len", decodedFrame.frameLen, "index", decodedFrame.index)
 	// Add to frame buf reassembly list.
-	// fmt.Println("----[Debug]: worker.processFrame() Adding frame to reassembly list. seq", decodedFrame.seqNr, "epoch", epoch)
 	rlist := w.getRlist(epoch)
 	rlist.Insert(ctx, decodedFrame)
 }
@@ -163,7 +160,6 @@ func (w *worker) cleanup() {
 }
 
 func (w *worker) send(packet []byte) error {
-	// fmt.Println("----[Debug]: worker.send() Sending packet to tunIO. len", len(packet), "seq", binary.BigEndian.Uint32(packet[24:28]))
 	bytesWritten, err := w.tunIO.Write(packet)
 	if err != nil {
 		increaseCounterMetric(w.Metrics.SendLocalError, 1)

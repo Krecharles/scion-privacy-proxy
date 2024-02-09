@@ -6,6 +6,8 @@ import (
 	"github.com/scionproto/scion/go/lib/snet"
 )
 
+// Edge represents an edge in the graph, i.e. a connection between two nodes with a specific
+// interface
 type Edge struct {
 	Source, Target, Interface string
 }
@@ -23,9 +25,10 @@ func (e Edge) String() string {
 }
 
 type Graph struct {
-	// list of paths from which this graph is build. This is necessary as not every path in the graph is valid
+	// Paths is list of paths from which this graph is build. This is necessary as not every path in
+	// the graph is valid
 	Paths [][]Edge
-	// map of weights for each edge, where the key is edge.String()
+	// Weights is a map of weights for each edge, where the key is edge.String()
 	Weights map[string]float64
 }
 
@@ -38,7 +41,7 @@ func NewGraph(pathsEdgeReprs [][]Edge) *Graph {
 	for _, path := range pathsEdgeReprs {
 		for _, e := range path {
 			// add edge between nodes path[i] and path[i+2] with interface id path[i+1]
-			g.Weights[e.String()] = 1.0
+			g.Weights[e.String()] = 0.1
 		}
 	}
 
@@ -51,18 +54,21 @@ func (g *Graph) FindPathsGreedy(source, target string, n int) [][]Edge {
 
 	for i := 0; i < n; i++ {
 		// Find the path with the lowest score
-		path := g.Paths[0]
-		minScore := g.CalcPathScore(path)
+		minScorePath := g.Paths[0]
+		minScore := g.CalcPathScore(minScorePath)
 		for _, p := range g.Paths {
 			score := g.CalcPathScore(p)
 			if score < minScore {
 				minScore = score
-				path = p
+				minScorePath = p
 			}
 		}
-		paths = append(paths, path)
+
+		// Add the path with lowest score to the list of selected paths
+		paths = append(paths, minScorePath)
+
 		// Increase the weight of the edges in the current path
-		for _, e := range path {
+		for _, e := range minScorePath {
 			g.Weights[e.String()] *= 100.0
 			// Increase the weight of other edges between the same nodes
 			for _, p := range g.Paths {
@@ -88,12 +94,14 @@ func (g *Graph) CalcPathScore(path []Edge) float64 {
 	return score
 }
 
-// Calculates the probability of compromise for a given set of paths.
+// Calculates the probability of compromise for a given set of paths with the constant edge
+// probability of 0.10
 func CalcProbabilityOfCompromiseConst(paths [][]Edge) float64 {
 	const edgeProbability = 0.10
 
 	var terms []float64
-	// calculate the probability of compromise for each subset of paths
+	// calculate the probability of compromise for each subset of paths using the
+	// inclusion-exclusion principle
 	for i := 1; i <= len(paths); i++ {
 		for _, subset := range Combination(paths, i) {
 			sharedEdges := make(map[string]bool)
@@ -113,6 +121,7 @@ func CalcProbabilityOfCompromiseConst(paths [][]Edge) float64 {
 		}
 	}
 
+	// sum up the terms
 	sum := 0.0
 	for _, term := range terms {
 		sum += term
@@ -138,7 +147,6 @@ func BuildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 
 	// Check if the given paths have changed since last call
 	if isSamePathSet(pathsEdgeReprs, prevGivenPaths) {
-		// fmt.Println("----[DEBUG]: Paths have not changed since last call")
 		return prevSelectedOriginalPaths
 	}
 
@@ -157,10 +165,10 @@ func BuildGraphAndFindPaths(paths []snet.Path, numberOfPaths int) []snet.Path {
 	}
 
 	if !isSamePathSet(prevSelectedPaths, selectedPaths) {
-		fmt.Println("----[DEBUG]: Selected paths with score", CalcProbabilityOfCompromiseConst(selectedPaths))
 		// print the selected paths
-		for _, p := range selectedPaths {
-			fmt.Println("----[DEBUG]: Selected path:", pathEdgesToString(p))
+		fmt.Println("Selected paths:")
+		for _, p := range returnOriginalPaths {
+			fmt.Println(p.Metadata().Interfaces)
 		}
 	}
 
@@ -240,7 +248,6 @@ func matchPathWithOriginalPaths(path []Edge, originalPaths []snet.Path) snet.Pat
 			return opath
 		}
 	}
-	// fmt.Println("----[Error]: Could not match path with original paths. path:", path, "originalPaths:", originalPaths)
 	return nil
 }
 
