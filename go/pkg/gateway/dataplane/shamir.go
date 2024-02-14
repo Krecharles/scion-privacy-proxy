@@ -116,7 +116,7 @@ type polynomial struct {
 
 // makePolynomial constructs a random polynomial of the given
 // degree but with the provided intercept value.
-func makePolynomial(intercept, degree uint8) (polynomial, error) {
+func makePolynomial(intercept, degree uint8, coefs []byte) (polynomial, error) {
 	// Create a wrapper
 	p := polynomial{
 		coefficients: make([]byte, degree+1),
@@ -125,10 +125,12 @@ func makePolynomial(intercept, degree uint8) (polynomial, error) {
 	// Ensure the intercept is set
 	p.coefficients[0] = intercept
 
-	// Assign random co-efficients to the polynomial
-	if _, err := rand.Read(p.coefficients[1:]); err != nil {
-		return p, err
-	}
+	// // Assign random co-efficients to the polynomial
+	// if _, err := rand.Read(p.coefficients[1:]); err != nil {
+	// 	return p, err
+	// }
+
+	copy(p.coefficients[1:], coefs)
 
 	// Assign co-efficients statically to test performance
 	// for i := 1; i <= int(degree); i++ {
@@ -271,7 +273,7 @@ func Split(secret []byte, parts, threshold int) ([][]byte, error) {
 	mathrand.Seed(time.Now().UnixNano())
 	xCoordinates := mathrand.Perm(255)
 
-	// // Generate the permutation statically for performance
+	// Generate the permutation statically for performance
 	// xCoordinates := make([]int, 255)
 	// for i := 0; i < 255; i++ {
 	// 	xCoordinates[i] = 10 + i
@@ -286,12 +288,23 @@ func Split(secret []byte, parts, threshold int) ([][]byte, error) {
 		out[idx][len(secret)] = uint8(xCoordinates[idx]) + 1
 	}
 
+	// create polynomial coefficients in a batch
+	polyCoefs := make([]byte, len(secret)*(threshold-1))
+
+	n, err := rand.Read(polyCoefs)
+	if err != nil {
+		return nil, err
+	}
+	if n != len(polyCoefs) {
+		return nil, fmt.Errorf("failed to read enough random bytes")
+	}
+
 	// Construct a random polynomial for each byte of the secret.
 	// Because we are using a field of size 256, we can only represent
 	// a single byte as the intercept of the polynomial, so we must
 	// use a new polynomial for each byte.
 	for idx, val := range secret {
-		p, err := makePolynomial(val, uint8(threshold-1))
+		p, err := makePolynomial(val, uint8(threshold-1), polyCoefs[idx*(threshold-1):(idx+1)*(threshold-1)])
 		if err != nil {
 			return nil, err
 		}
