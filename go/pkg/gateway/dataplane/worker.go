@@ -50,7 +50,7 @@ type worker struct {
 	rlists           map[int]*reassemblyList
 	markedForCleanup bool
 	tunIO            io.WriteCloser
-	decoder          Decoder
+	decoder          *Decoder
 }
 
 func newWorker(remote *snet.UDPAddr, sessID uint8, numberOfPathsT int,
@@ -63,7 +63,7 @@ func newWorker(remote *snet.UDPAddr, sessID uint8, numberOfPathsT int,
 		rlists:  make(map[int]*reassemblyList),
 		tunIO:   tunIO,
 		Metrics: metrics,
-		decoder: *newDecoder(numberOfPathsT, aesKey),
+		decoder: newDecoder(numberOfPathsT, aesKey),
 	}
 
 	return worker

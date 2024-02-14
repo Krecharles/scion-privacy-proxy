@@ -17,6 +17,8 @@ type shareBufGroup struct {
 	shares *list.List
 	// Is the group combined
 	isCombined bool
+	// Is the group marked for cleanup in the decoder
+	isMarkedForCleanup bool
 }
 
 func GetPathIndex(sb *shareBuf) uint8 {
@@ -31,10 +33,11 @@ func NewShareBufGroup(sb *shareBuf, numPaths uint8) *shareBufGroup {
 		return nil
 	}
 	sbg := &shareBufGroup{
-		groupSeqNr: groupSeqNr,
-		numPaths:   numPaths,
-		shares:     list.New(),
-		isCombined: false,
+		groupSeqNr:         groupSeqNr,
+		numPaths:           numPaths,
+		shares:             list.New(),
+		isCombined:         false,
+		isMarkedForCleanup: false,
 	}
 	sbg.Insert(sb)
 	return sbg
